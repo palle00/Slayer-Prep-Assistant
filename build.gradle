@@ -14,24 +14,25 @@ repositories {
 }
 
 def runeLiteVersion = 'latest.release'
-def pluginMainClass = 'com.SlayerPrepAssistant.SlayerPrepAssistantPluginTest'
+def pluginMainClass = 'com.slayerprepassistant.SlayerPrepAssistantPluginTest'
 
 dependencies {
 	compileOnly group: 'net.runelite', name:'client', version: runeLiteVersion
-
-	compileOnly 'org.projectlombok:lombok:1.18.30'
-	annotationProcessor 'org.projectlombok:lombok:1.18.30'
 
 	testImplementation 'junit:junit:4.12'
 	testImplementation group: 'net.runelite', name:'client', version: runeLiteVersion
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
 }
 
-group = 'com.SlayerPrepAssistant'
+group = 'com.slayerprepassistant'
 
 tasks.withType(JavaCompile).configureEach {
 	options.encoding = 'UTF-8'
 	options.release.set(11)
+}
+
+tasks.named('processResources') {
+	from('runelite-plugin.properties')
 }
 
 tasks.register('run', JavaExec) {

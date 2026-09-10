@@ -1,6 +1,7 @@
 package com.slayerprepassistant.wiki;
 
 import com.slayerprepassistant.task.TargetOption;
+import java.util.Objects;
 
 public class MonsterVariant
 {
@@ -25,13 +26,32 @@ public class MonsterVariant
 		return wikiPageTitle;
 	}
 
-	public String getWikiUrl()
-	{
-		return wikiUrl;
-	}
 
 	public TargetOption toTargetOption()
 	{
 		return new TargetOption(displayName, wikiPageTitle, "Strategies/" + wikiPageTitle);
+	}
+
+	@Override
+	public boolean equals(Object o)
+	{
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		MonsterVariant that = (MonsterVariant) o;
+		return displayName.equals(that.displayName) &&
+				wikiPageTitle.equals(that.wikiPageTitle) &&
+				wikiUrl.equals(that.wikiUrl);
+	}
+
+	@Override
+	public int hashCode()
+	{
+		return Objects.hash(displayName, wikiPageTitle, wikiUrl);
+	}
+
+	@Override
+	public String toString()
+	{
+		return displayName;
 	}
 }

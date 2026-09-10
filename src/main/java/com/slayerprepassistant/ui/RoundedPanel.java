@@ -15,19 +15,39 @@ class RoundedPanel extends JPanel
 	RoundedPanel(LayoutManager layout, Color background, int radius)
 	{
 		super(layout);
-		this.background = background;
-		this.radius = radius;
+		this.background = background == null ? Color.DARK_GRAY : background;
+		this.radius = Math.max(0, radius);
 		setOpaque(false);
 	}
 
 	@Override
 	protected void paintComponent(Graphics graphics)
 	{
-		Graphics2D g = (Graphics2D) graphics.create();
-		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-		g.setColor(background);
-		g.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
-		g.dispose();
 		super.paintComponent(graphics);
+		if (graphics == null)
+		{
+			return;
+		}
+		Graphics2D g = (Graphics2D) graphics.create();
+		if (g == null)
+		{
+			return;
+		}
+		try
+		{
+			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			int width = getWidth();
+			int height = getHeight();
+			if (width <= 0 || height <= 0)
+			{
+				return;
+			}
+			g.setColor(background);
+			g.fillRoundRect(0, 0, width, height, radius, radius);
+		}
+		finally
+		{
+			g.dispose();
+		}
 	}
 }

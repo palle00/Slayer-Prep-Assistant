@@ -62,10 +62,6 @@ public class GearMatcher
 			return OwnershipState.OWNED_IN_BANK;
 		}
 
-		if (!includeEquipment)
-		{
-			return OwnershipState.MISSING;
-		}
 		return itemIds.isEmpty() ? OwnershipState.UNKNOWN : OwnershipState.MISSING;
 	}
 

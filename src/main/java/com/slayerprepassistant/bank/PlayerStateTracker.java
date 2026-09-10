@@ -20,14 +20,18 @@ public class PlayerStateTracker
 
 	public boolean update(Client client)
 	{
+		if (client == null)
+		{
+			return false;
+		}
 		ItemContainer equipment = client.getItemContainer(InventoryID.WORN);
 		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
 		PlayerInventoryState nextState = new PlayerInventoryState(
-			BankSnapshotService.toQuantities(equipment),
-			BankSnapshotService.toQuantities(inventory),
-			BankSnapshotService.toNames(equipment, client),
-			BankSnapshotService.toNames(inventory, client),
-			bankSnapshotService.getSnapshot());
+				BankSnapshotService.toQuantities(equipment),
+				BankSnapshotService.toQuantities(inventory),
+				BankSnapshotService.toNames(equipment, client),
+				BankSnapshotService.toNames(inventory, client),
+				bankSnapshotService.getSnapshot());
 		String nextStateKey = key(nextState);
 		if (nextStateKey.equals(stateKey))
 		{
@@ -51,11 +55,11 @@ public class PlayerStateTracker
 	private String key(PlayerInventoryState state)
 	{
 		return Objects.toString(new TreeMap<>(state.getEquipment()))
-			+ "|" + Objects.toString(new TreeMap<>(state.getInventory()))
-			+ "|" + Objects.toString(new TreeSet<>(state.getEquipmentNames()))
-			+ "|" + Objects.toString(new TreeSet<>(state.getInventoryNames()))
-			+ "|bankKnown=" + state.getBankSnapshot().isKnown()
-			+ "|" + Objects.toString(new TreeMap<>(state.getBankSnapshot().getQuantitiesById()))
-			+ "|" + Objects.toString(new TreeSet<>(state.getBankSnapshot().getItemNames()));
+				+ "|" + Objects.toString(new TreeMap<>(state.getInventory()))
+				+ "|" + Objects.toString(new TreeSet<>(state.getEquipmentNames()))
+				+ "|" + Objects.toString(new TreeSet<>(state.getInventoryNames()))
+				+ "|bankKnown=" + state.getBankSnapshot().isKnown()
+				+ "|" + Objects.toString(new TreeMap<>(state.getBankSnapshot().getQuantitiesById()))
+				+ "|" + Objects.toString(new TreeSet<>(state.getBankSnapshot().getItemNames()));
 	}
 }

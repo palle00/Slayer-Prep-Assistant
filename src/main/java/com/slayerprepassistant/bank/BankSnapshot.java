@@ -20,14 +20,14 @@ public class BankSnapshot
 
 	public BankSnapshot(Map<Integer, Integer> quantitiesById, Set<String> itemNames, Instant capturedAt)
 	{
-		this.quantitiesById = Collections.unmodifiableMap(new HashMap<>(quantitiesById));
-		this.itemNames = Collections.unmodifiableSet(new HashSet<>(itemNames));
+		this.quantitiesById = quantitiesById == null ? Collections.emptyMap() : Collections.unmodifiableMap(new HashMap<>(quantitiesById));
+		this.itemNames = itemNames == null ? Collections.emptySet() : Collections.unmodifiableSet(new HashSet<>(itemNames));
 		this.capturedAt = capturedAt;
 	}
 
 	public static BankSnapshot emptyUnknown()
 	{
-		return new BankSnapshot(Collections.emptyMap(), null);
+		return new BankSnapshot(Collections.emptyMap(), Collections.emptySet(), null);
 	}
 
 	public Map<Integer, Integer> getQuantitiesById()
@@ -40,11 +40,6 @@ public class BankSnapshot
 		return itemNames;
 	}
 
-	public Instant getCapturedAt()
-	{
-		return capturedAt;
-	}
-
 	public boolean isKnown()
 	{
 		return capturedAt != null;
@@ -52,6 +47,11 @@ public class BankSnapshot
 
 	public boolean containsAny(Iterable<Integer> itemIds)
 	{
+		if (itemIds == null)
+		{
+			return false;
+		}
+
 		for (Integer itemId : itemIds)
 		{
 			if (quantitiesById.getOrDefault(itemId, 0) > 0)

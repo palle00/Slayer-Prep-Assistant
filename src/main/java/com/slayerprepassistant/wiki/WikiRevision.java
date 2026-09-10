@@ -1,6 +1,7 @@
 package com.slayerprepassistant.wiki;
 
 import java.time.Instant;
+import java.util.Objects;
 
 public class WikiRevision
 {
@@ -11,10 +12,10 @@ public class WikiRevision
 
 	public WikiRevision(String title, long revisionId, Instant fetchedAt, String text)
 	{
-		this.title = title;
+		this.title = title == null ? "" : title;
 		this.revisionId = revisionId;
-		this.fetchedAt = fetchedAt;
-		this.text = text;
+		this.fetchedAt = fetchedAt == null ? Instant.now() : fetchedAt;
+		this.text = text == null ? "" : text;
 	}
 
 	public String getTitle()
@@ -27,13 +28,32 @@ public class WikiRevision
 		return revisionId;
 	}
 
-	public Instant getFetchedAt()
-	{
-		return fetchedAt;
-	}
-
 	public String getText()
 	{
 		return text;
+	}
+
+	@Override
+	public boolean equals(Object o)
+	{
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		WikiRevision that = (WikiRevision) o;
+		return revisionId == that.revisionId &&
+				title.equals(that.title) &&
+				fetchedAt.equals(that.fetchedAt) &&
+				text.equals(that.text);
+	}
+
+	@Override
+	public int hashCode()
+	{
+		return Objects.hash(title, revisionId, fetchedAt, text);
+	}
+
+	@Override
+	public String toString()
+	{
+		return "WikiRevision{title='" + title + "', revisionId=" + revisionId + "}";
 	}
 }

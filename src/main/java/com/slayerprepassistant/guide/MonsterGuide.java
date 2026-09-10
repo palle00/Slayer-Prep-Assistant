@@ -2,6 +2,7 @@ package com.slayerprepassistant.guide;
 
 import com.slayerprepassistant.model.ParsingConfidence;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -18,14 +19,14 @@ public class MonsterGuide
 
 	public MonsterGuide(String monsterName, String wikiTitle, String wikiUrl, long revisionId, Instant fetchedAt, List<StrategyMethod> methods, List<String> notes, ParsingConfidence confidence)
 	{
-		this.monsterName = monsterName;
-		this.wikiTitle = wikiTitle;
-		this.wikiUrl = wikiUrl;
+		this.monsterName = monsterName == null ? "" : monsterName;
+		this.wikiTitle = wikiTitle == null ? "" : wikiTitle;
+		this.wikiUrl = wikiUrl == null ? "" : wikiUrl;
 		this.revisionId = revisionId;
-		this.fetchedAt = fetchedAt;
-		this.methods = Collections.unmodifiableList(methods);
-		this.notes = Collections.unmodifiableList(notes);
-		this.confidence = confidence;
+		this.fetchedAt = fetchedAt == null ? Instant.EPOCH : fetchedAt;
+		this.methods = methods == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(methods));
+		this.notes = notes == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(notes));
+		this.confidence = confidence == null ? ParsingConfidence.UNKNOWN : confidence;
 	}
 
 	public String getMonsterName()

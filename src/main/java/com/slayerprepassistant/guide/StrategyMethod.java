@@ -2,6 +2,7 @@ package com.slayerprepassistant.guide;
 
 import com.slayerprepassistant.gear.GearRecommendation;
 import com.slayerprepassistant.model.ParsingConfidence;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -15,11 +16,11 @@ public class StrategyMethod
 
 	public StrategyMethod(CombatMethod method, List<GearRecommendation> gear, List<InventoryRecommendation> inventory, List<String> notes, ParsingConfidence confidence)
 	{
-		this.method = method;
-		this.gear = Collections.unmodifiableList(gear);
-		this.inventory = Collections.unmodifiableList(inventory);
-		this.notes = Collections.unmodifiableList(notes);
-		this.confidence = confidence;
+		this.method = method == null ? CombatMethod.defaultMethod() : method;
+		this.gear = gear == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(gear));
+		this.inventory = inventory == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(inventory));
+		this.notes = notes == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(notes));
+		this.confidence = confidence == null ? ParsingConfidence.UNKNOWN : confidence;
 	}
 
 	public CombatMethod getMethod()

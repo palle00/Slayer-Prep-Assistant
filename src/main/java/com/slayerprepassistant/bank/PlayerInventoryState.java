@@ -21,11 +21,11 @@ public class PlayerInventoryState
 
 	public PlayerInventoryState(Map<Integer, Integer> equipment, Map<Integer, Integer> inventory, Set<String> equipmentNames, Set<String> inventoryNames, BankSnapshot bankSnapshot)
 	{
-		this.equipment = Collections.unmodifiableMap(new HashMap<>(equipment));
-		this.inventory = Collections.unmodifiableMap(new HashMap<>(inventory));
-		this.equipmentNames = Collections.unmodifiableSet(new HashSet<>(equipmentNames));
-		this.inventoryNames = Collections.unmodifiableSet(new HashSet<>(inventoryNames));
-		this.bankSnapshot = bankSnapshot;
+		this.equipment = equipment == null ? Collections.emptyMap() : Collections.unmodifiableMap(new HashMap<>(equipment));
+		this.inventory = inventory == null ? Collections.emptyMap() : Collections.unmodifiableMap(new HashMap<>(inventory));
+		this.equipmentNames = equipmentNames == null ? Collections.emptySet() : Collections.unmodifiableSet(new HashSet<>(equipmentNames));
+		this.inventoryNames = inventoryNames == null ? Collections.emptySet() : Collections.unmodifiableSet(new HashSet<>(inventoryNames));
+		this.bankSnapshot = bankSnapshot == null ? BankSnapshot.emptyUnknown() : bankSnapshot;
 	}
 
 	public static PlayerInventoryState unknownBank()

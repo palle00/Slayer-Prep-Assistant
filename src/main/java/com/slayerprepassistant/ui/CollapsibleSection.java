@@ -20,14 +20,15 @@ class CollapsibleSection extends RoundedPanel
 	CollapsibleSection(String title, String summary, boolean defaultOpen, JPanel body, Runnable refresh)
 	{
 		super(new BorderLayout(0, 5), SlayerPrepAssistantPanel.PANEL, SlayerPrepAssistantPanel.CARD_RADIUS);
-		this.title = title;
-		this.summary = summary;
-		this.body = body;
+		this.title = title == null ? "" : title;
+		this.summary = summary == null ? "" : summary;
+		this.body = body == null ? new JPanel() : body;
 		this.refresh = refresh;
 		this.open = defaultOpen;
+
 		setBorder(BorderFactory.createCompoundBorder(
-			new RoundedBorder(SlayerPrepAssistantPanel.BORDER, SlayerPrepAssistantPanel.CARD_RADIUS),
-			BorderFactory.createEmptyBorder(7, 8, 7, 8)));
+				new RoundedBorder(SlayerPrepAssistantPanel.BORDER, SlayerPrepAssistantPanel.CARD_RADIUS),
+				BorderFactory.createEmptyBorder(7, 8, 7, 8)));
 		setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		JButton header = headerButton();
@@ -36,11 +37,14 @@ class CollapsibleSection extends RoundedPanel
 			open = !open;
 			this.body.setVisible(open);
 			header.setText(headerText());
-			refresh.run();
+			if (this.refresh != null)
+			{
+				this.refresh.run();
+			}
 		});
 		add(header, BorderLayout.NORTH);
-		body.setVisible(open);
-		add(body, BorderLayout.CENTER);
+		this.body.setVisible(open);
+		add(this.body, BorderLayout.CENTER);
 	}
 
 	private JButton headerButton()
@@ -48,20 +52,32 @@ class CollapsibleSection extends RoundedPanel
 		JButton button = new JButton(headerText());
 		button.setForeground(SlayerPrepAssistantPanel.TEXT);
 		button.setBackground(SlayerPrepAssistantPanel.PANEL_LIGHT);
-		button.setFont(button.getFont().deriveFont(Font.PLAIN, SlayerPrepAssistantPanel.FONT_SM));
+
+		Font baseFont = button.getFont();
+		if (baseFont != null)
+		{
+			button.setFont(baseFont.deriveFont(Font.PLAIN, SlayerPrepAssistantPanel.FONT_SM));
+		}
+
 		button.setFocusPainted(false);
 		button.setOpaque(false);
 		button.setContentAreaFilled(false);
 		button.setBorder(BorderFactory.createCompoundBorder(
-			new RoundedBorder(SlayerPrepAssistantPanel.BORDER, SlayerPrepAssistantPanel.CONTROL_RADIUS),
-			BorderFactory.createEmptyBorder(4, 6, 4, 6)));
+				new RoundedBorder(SlayerPrepAssistantPanel.BORDER, SlayerPrepAssistantPanel.CONTROL_RADIUS),
+				BorderFactory.createEmptyBorder(4, 6, 4, 6)));
 		button.setHorizontalAlignment(SwingConstants.LEFT);
-		button.setMaximumSize(new Dimension(Integer.MAX_VALUE, button.getPreferredSize().height));
+
+		Dimension prefSize = button.getPreferredSize();
+		int prefHeight = prefSize != null ? prefSize.height : 24;
+		button.setMaximumSize(new Dimension(Integer.MAX_VALUE, prefHeight));
 		return button;
 	}
 
 	private String headerText()
 	{
-		return title + (summary == null || summary.isEmpty() ? "" : "  " + summary) + "  " + (open ? "v" : ">");
+		String safeTitle = title == null ? "" : title;
+		String safeSummary = summary == null || summary.isEmpty() ? "" : "  " + summary;
+		String arrow = open ? "v" : ">";
+		return safeTitle + safeSummary + "  " + arrow;
 	}
 }

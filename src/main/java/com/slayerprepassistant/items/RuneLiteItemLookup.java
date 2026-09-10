@@ -1,6 +1,7 @@
 package com.slayerprepassistant.items;
 
 import com.slayerprepassistant.gear.RecommendedItem;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -12,10 +13,10 @@ import net.runelite.http.api.item.ItemPrice;
 public class RuneLiteItemLookup
 {
 	private final ItemManager itemManager;
-	private final Map<String, Integer> itemIdCache = new HashMap<>();
-	private final Map<String, OptionalInt> priceCache = new HashMap<>();
-	private final Map<String, ItemPrice> searchCache = new HashMap<>();
-	private final Set<String> searchMisses = new HashSet<>();
+	private final Map<String, Integer> itemIdCache = Collections.synchronizedMap(new HashMap<>());
+	private final Map<String, OptionalInt> priceCache = Collections.synchronizedMap(new HashMap<>());
+	private final Map<String, ItemPrice> searchCache = Collections.synchronizedMap(new HashMap<>());
+	private final Set<String> searchMisses = Collections.synchronizedSet(new HashSet<>());
 
 	public RuneLiteItemLookup(ItemManager itemManager)
 	{
@@ -24,21 +25,31 @@ public class RuneLiteItemLookup
 
 	public Integer itemId(RecommendedItem item)
 	{
-		if (item == null || item.getName().trim().isEmpty())
+		if (item == null || item.getName() == null || item.getName().trim().isEmpty())
 		{
 			return null;
 		}
 		String normalized = ItemResolver.normalize(item.getName());
+		if (normalized.isEmpty())
+		{
+			return null;
+		}
+
 		if (itemIdCache.containsKey(normalized))
 		{
 			return itemIdCache.get(normalized);
 		}
+
 		if (!item.getItemIds().isEmpty())
 		{
 			Integer itemId = item.getItemIds().iterator().next();
-			itemIdCache.put(normalized, itemId);
-			return itemId;
+			if (itemId != null)
+			{
+				itemIdCache.put(normalized, itemId);
+				return itemId;
+			}
 		}
+
 		ItemPrice match = findExact(item.getName(), normalized);
 		Integer itemId = match == null ? null : match.getId();
 		itemIdCache.put(normalized, itemId);
@@ -47,16 +58,22 @@ public class RuneLiteItemLookup
 
 	public OptionalInt wikiPrice(RecommendedItem item)
 	{
-		if (item == null || item.getName().trim().isEmpty())
+		if (item == null || item.getName() == null || item.getName().trim().isEmpty())
 		{
 			return OptionalInt.empty();
 		}
 		String normalized = ItemResolver.normalize(item.getName());
+		if (normalized.isEmpty())
+		{
+			return OptionalInt.empty();
+		}
+
 		OptionalInt cached = priceCache.get(normalized);
 		if (cached != null)
 		{
 			return cached;
 		}
+
 		ItemPrice match = findExact(item.getName(), normalized);
 		int price = match == null ? 0 : match.getWikiPrice() > 0 ? match.getWikiPrice() : match.getPrice();
 		OptionalInt result = price > 0 ? OptionalInt.of(price) : OptionalInt.empty();
@@ -70,18 +87,22 @@ public class RuneLiteItemLookup
 		{
 			return searchCache.get(normalized);
 		}
-		if (searchMisses.contains(normalized) || itemManager == null)
+		if (searchMisses.contains(normalized) || itemManager == null || name == null)
 		{
 			return null;
 		}
 		try
 		{
-			for (ItemPrice itemPrice : itemManager.search(name))
+			java.util.List<ItemPrice> results = itemManager.search(name);
+			if (results != null)
 			{
-				if (ItemResolver.normalize(itemPrice.getName()).equals(normalized))
+				for (ItemPrice itemPrice : results)
 				{
-					searchCache.put(normalized, itemPrice);
-					return itemPrice;
+					if (itemPrice != null && itemPrice.getName() != null && ItemResolver.normalize(itemPrice.getName()).equals(normalized))
+					{
+						searchCache.put(normalized, itemPrice);
+						return itemPrice;
+					}
 				}
 			}
 		}

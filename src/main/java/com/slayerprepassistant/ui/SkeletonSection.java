@@ -24,17 +24,20 @@ class SkeletonSection extends RoundedPanel
 	SkeletonSection(String title, int rows, boolean equipment, IntSupplier frameSupplier)
 	{
 		super(new BorderLayout(0, 6), SlayerPrepAssistantPanel.PANEL, SlayerPrepAssistantPanel.CARD_RADIUS);
-		this.frameSupplier = frameSupplier;
+		this.frameSupplier = frameSupplier == null ? () -> 0 : frameSupplier;
+
 		setBorder(BorderFactory.createCompoundBorder(
-			new RoundedBorder(SlayerPrepAssistantPanel.BORDER, SlayerPrepAssistantPanel.CARD_RADIUS),
-			BorderFactory.createEmptyBorder(7, 8, 7, 8)));
+				new RoundedBorder(SlayerPrepAssistantPanel.BORDER, SlayerPrepAssistantPanel.CARD_RADIUS),
+				BorderFactory.createEmptyBorder(7, 8, 7, 8)));
 		setAlignmentX(Component.LEFT_ALIGNMENT);
+
 		JPanel header = new JPanel(new BorderLayout());
 		header.setBackground(SlayerPrepAssistantPanel.PANEL);
 		header.add(label(title), BorderLayout.WEST);
 		add(header, BorderLayout.NORTH);
 
-		JPanel body = equipment ? skeletonEquipmentRows(rows) : skeletonInventoryRows(rows);
+		int effectiveRows = Math.max(0, rows);
+		JPanel body = equipment ? skeletonEquipmentRows(effectiveRows) : skeletonInventoryRows(effectiveRows);
 		add(body, BorderLayout.CENTER);
 		fitHeight(this);
 	}
@@ -45,7 +48,7 @@ class SkeletonSection extends RoundedPanel
 		for (int i = 0; i < rows; i++)
 		{
 			JPanel row = new JPanel(new BorderLayout(7, 0));
-			row.setBackground(i % 2 == 0 ? new Color(32, 32, 32) : new Color(27, 27, 27));
+			row.setBackground(i % 2 == 0 ? new Color(29, 29, 29) : new Color(24, 24, 24));
 			row.setBorder(BorderFactory.createEmptyBorder(4, 3, 4, 0));
 			row.add(new SkeletonBlock(30, 30, frameSupplier), BorderLayout.WEST);
 
@@ -77,7 +80,7 @@ class SkeletonSection extends RoundedPanel
 	{
 		JPanel panel = new JPanel();
 		panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
-		panel.setBackground(background);
+		panel.setBackground(background == null ? SlayerPrepAssistantPanel.PANEL : background);
 		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		return panel;
 	}
@@ -86,14 +89,23 @@ class SkeletonSection extends RoundedPanel
 	{
 		JLabel label = new JLabel(text == null ? "" : text);
 		label.setForeground(SlayerPrepAssistantPanel.GOLD);
-		label.setFont(label.getFont().deriveFont(Font.BOLD, SlayerPrepAssistantPanel.FONT_XS));
+		Font baseFont = label.getFont();
+		if (baseFont != null)
+		{
+			label.setFont(baseFont.deriveFont(Font.BOLD, SlayerPrepAssistantPanel.FONT_XS));
+		}
 		return label;
 	}
 
 	private void fitHeight(Component component)
 	{
+		if (component == null)
+		{
+			return;
+		}
 		Dimension preferred = component.getPreferredSize();
-		component.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferred.height));
+		int prefHeight = preferred != null ? preferred.height : 50;
+		component.setMaximumSize(new Dimension(Integer.MAX_VALUE, prefHeight));
 	}
 
 	private static class SkeletonBlock extends JComponent
@@ -103,26 +115,50 @@ class SkeletonSection extends RoundedPanel
 
 		SkeletonBlock(int preferredWidth, int preferredHeight, IntSupplier frameSupplier)
 		{
-			this.frameSupplier = frameSupplier;
-			setPreferredSize(new Dimension(preferredWidth, preferredHeight));
-			setMinimumSize(new Dimension(preferredWidth, preferredHeight));
-			setMaximumSize(new Dimension(preferredWidth, preferredHeight));
+			this.frameSupplier = frameSupplier == null ? () -> 0 : frameSupplier;
+			Dimension dim = new Dimension(Math.max(1, preferredWidth), Math.max(1, preferredHeight));
+			setPreferredSize(dim);
+			setMinimumSize(dim);
+			setMaximumSize(dim);
 		}
 
 		@Override
 		protected void paintComponent(Graphics graphics)
 		{
+			super.paintComponent(graphics);
+			if (graphics == null)
+			{
+				return;
+			}
 			Graphics2D g = (Graphics2D) graphics.create();
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			int frame = frameSupplier.getAsInt();
-			int pulse = Math.abs(6 - frame);
-			int shade = 43 + pulse * 4;
-			g.setColor(new Color(shade, shade, shade));
-			g.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
-			g.setColor(new Color(74, 74, 74, 80));
-			int shimmerX = (frame * (getWidth() + 16) / 12) - 16;
-			g.fillRoundRect(shimmerX, 0, Math.max(8, getWidth() / 3), getHeight(), radius, radius);
-			g.dispose();
+			if (g == null)
+			{
+				return;
+			}
+			try
+			{
+				g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+				int width = getWidth();
+				int height = getHeight();
+				if (width <= 0 || height <= 0)
+				{
+					return;
+				}
+
+				int frame = frameSupplier.getAsInt();
+				int pulse = Math.abs(6 - frame);
+				int shade = 30 + pulse * 3;
+				g.setColor(new Color(shade, shade, shade));
+				g.fillRoundRect(0, 0, width, height, radius, radius);
+
+				g.setColor(new Color(58, 58, 58, 80));
+				int shimmerX = (frame * (width + 16) / 12) - 16;
+				g.fillRoundRect(shimmerX, 0, Math.max(8, width / 3), height, radius, radius);
+			}
+			finally
+			{
+				g.dispose();
+			}
 		}
 	}
 }

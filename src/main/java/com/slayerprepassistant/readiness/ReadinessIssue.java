@@ -7,17 +7,9 @@ public class ReadinessIssue
 
 	public ReadinessIssue(String severity, String message)
 	{
-		this.severity = severity;
-		this.message = message;
+		this.severity = severity == null || severity.trim().isEmpty() ? "INFO" : severity;
+		this.message = message == null ? "" : message;
 	}
 
-	public String getSeverity()
-	{
-		return severity;
-	}
 
-	public String getMessage()
-	{
-		return message;
-	}
 }

@@ -1,5 +1,6 @@
 package com.slayerprepassistant.gear;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -10,8 +11,8 @@ public class LoadoutResult
 
 	public LoadoutResult(LoadoutMode mode, List<GearMatch> gearMatches)
 	{
-		this.mode = mode;
-		this.gearMatches = Collections.unmodifiableList(gearMatches);
+		this.mode = mode == null ? LoadoutMode.MAX : mode;
+		this.gearMatches = gearMatches == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(gearMatches));
 	}
 
 	public LoadoutMode getMode()

@@ -231,4 +231,70 @@ public class WikiStrategyParserTest
 		assertEquals("Void knight gloves", result.getGuide().getMethods().get(0).getGear().get(8).getTiers().get(0).getAlternatives().get(0).getName());
 		assertEquals("Avernic treads (max)", result.getGuide().getMethods().get(0).getGear().get(9).getTiers().get(0).getAlternatives().get(0).getName());
 	}
+
+	@Test
+	public void renderedEquipmentParsesStandaloneWikiAnchorGrid()
+	{
+		String text = "# Ranged equipment\n"
+			+ "Weapon: Rune crossbow";
+		String html = maxRangedEquipmentHtml();
+
+		WikiParsingResult source = new WikiStrategyParser().parse("Vorkath", "Vorkath/Strategies", "https://oldschool.runescape.wiki/w/Vorkath/Strategies", 789, text);
+		WikiParsingResult result = new WikiStrategyParser().mergeRenderedHtml(source, html);
+
+		assertEquals("Void ranger helm", itemForSlot(result, GearSlot.HEAD));
+		assertEquals("Dizana's quiver", itemForSlot(result, GearSlot.CAPE));
+		assertEquals("Salve amulet(ei)", itemForSlot(result, GearSlot.NECK));
+		assertEquals("Ruby dragon bolts (e)", itemForSlot(result, GearSlot.AMMO));
+		assertEquals("Dragon hunter crossbow", itemForSlot(result, GearSlot.WEAPON));
+		assertEquals("Elite void top", itemForSlot(result, GearSlot.BODY));
+		assertEquals("Dragonfire ward", itemForSlot(result, GearSlot.SHIELD));
+		assertEquals("Elite void robe", itemForSlot(result, GearSlot.LEGS));
+		assertEquals("Void knight gloves", itemForSlot(result, GearSlot.HANDS));
+		assertEquals("Avernic treads (max)", itemForSlot(result, GearSlot.FEET));
+		assertEquals("Lightbearer", itemForSlot(result, GearSlot.RING));
+	}
+
+	@Test
+	public void renderedEquipmentUsesSingleSourceMethodForMaxTab()
+	{
+		String text = "# Ranged equipment\n"
+			+ "Weapon: Rune crossbow";
+		String html = "<div class=\"tabbertab\" data-title=\"Max\">" + maxRangedEquipmentHtml() + "</div>";
+
+		WikiParsingResult source = new WikiStrategyParser().parse("Vorkath", "Vorkath/Strategies", "https://oldschool.runescape.wiki/w/Vorkath/Strategies", 789, text);
+		WikiParsingResult result = new WikiStrategyParser().mergeRenderedHtml(source, html);
+
+		assertEquals(CombatMethod.RANGED, result.getGuide().getMethods().get(0).getMethod());
+		assertEquals("Dragon hunter crossbow", itemForSlot(result, GearSlot.WEAPON));
+	}
+
+	private String itemForSlot(WikiParsingResult result, GearSlot slot)
+	{
+		return result.getGuide().getMethods().get(0).getGear().stream()
+			.filter(recommendation -> recommendation.getSlot() == slot)
+			.findFirst()
+			.get()
+			.getTiers().get(0)
+			.getAlternatives().get(0)
+			.getName();
+	}
+
+	private String maxRangedEquipmentHtml()
+	{
+		return "<div class=\"equipment-div\">"
+			+ "<div class=\"equipment-head equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Void_ranger_helm#Normal\" title=\"Void ranger helm\"><img src=\"/images/Void_ranger_helm.png?75a26\" decoding=\"async\" loading=\"lazy\" width=\"30\" height=\"28\" class=\"mw-file-element\" data-file-width=\"30\" data-file-height=\"28\"></a></span></div></div>"
+			+ "<div class=\"equipment-cape equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Dizana%27s_quiver#Charged\" title=\"Dizana's quiver\"><img src=\"/images/Dizana%27s_quiver.png?f8a45\" decoding=\"async\" loading=\"lazy\" width=\"29\" height=\"28\" class=\"mw-file-element\" data-file-width=\"29\" data-file-height=\"28\"></a></span></div></div>"
+			+ "<div class=\"equipment-neck equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Salve_amulet(ei)#Nightmare_Zone\" title=\"Salve amulet(ei)\"><img src=\"/images/Salve_amulet%28ei%29.png?a8fa6\" decoding=\"async\" loading=\"lazy\" width=\"27\" height=\"25\" class=\"mw-file-element\" data-file-width=\"27\" data-file-height=\"25\"></a></span></div></div>"
+			+ "<div class=\"equipment-ammo equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Ruby_dragon_bolts_(e)\" title=\"Ruby dragon bolts (e)\"><img src=\"/images/Ruby_dragon_bolts_%28e%29_5.png?8d2f7\" decoding=\"async\" loading=\"lazy\" width=\"29\" height=\"31\" class=\"mw-file-element\" data-file-width=\"29\" data-file-height=\"31\"></a></span></div></div>"
+			+ "<div class=\"equipment-ammo2\"><div class=\"equipment-plinkp\"></div></div>"
+			+ "<div class=\"equipment-weapon equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Dragon_hunter_crossbow\" title=\"Dragon hunter crossbow\"><img src=\"/images/Dragon_hunter_crossbow.png?cc5f3\" decoding=\"async\" loading=\"lazy\" width=\"30\" height=\"29\" class=\"mw-file-element\" data-file-width=\"30\" data-file-height=\"29\"></a></span></div></div>"
+			+ "<div class=\"equipment-torso equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Elite_void_top#Normal\" title=\"Elite void top\"><img src=\"/images/Elite_void_top.png?7a7c0\" decoding=\"async\" loading=\"lazy\" width=\"30\" height=\"22\" class=\"mw-file-element\" data-file-width=\"30\" data-file-height=\"22\"></a></span></div></div>"
+			+ "<div class=\"equipment-shield equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Dragonfire_ward#Charged\" title=\"Dragonfire ward\"><img src=\"/images/Dragonfire_ward.png?cc5f3\" decoding=\"async\" loading=\"lazy\" width=\"28\" height=\"25\" class=\"mw-file-element\" data-file-width=\"28\" data-file-height=\"25\"></a></span></div></div>"
+			+ "<div class=\"equipment-legs equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Elite_void_robe#Normal\" title=\"Elite void robe\"><img src=\"/images/Elite_void_robe.png?090e3\" decoding=\"async\" loading=\"lazy\" width=\"18\" height=\"30\" class=\"mw-file-element\" data-file-width=\"18\" data-file-height=\"30\"></a></span></div></div>"
+			+ "<div class=\"equipment-gloves equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Void_knight_gloves#Normal\" title=\"Void knight gloves\"><img src=\"/images/Void_knight_gloves.png?75a26\" decoding=\"async\" loading=\"lazy\" width=\"30\" height=\"26\" class=\"mw-file-element\" data-file-width=\"30\" data-file-height=\"26\"></a></span></div></div>"
+			+ "<div class=\"equipment-boots equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Avernic_treads_(max)\" title=\"Avernic treads (max)\"><img src=\"/images/Avernic_treads_%28max%29.png?301a3\" decoding=\"async\" loading=\"lazy\" width=\"31\" height=\"25\" class=\"mw-file-element\" data-file-width=\"31\" data-file-height=\"25\"></a></span></div></div>"
+			+ "<div class=\"equipment-ring equipment-blank\"><div class=\"equipment-plinkp\"><span class=\"mw-default-size\" typeof=\"mw:File\"><a href=\"/w/Lightbearer\" title=\"Lightbearer\"><img src=\"/images/Lightbearer.png?6da96\" decoding=\"async\" loading=\"lazy\" width=\"22\" height=\"27\" class=\"mw-file-element\" data-file-width=\"22\" data-file-height=\"27\"></a></span></div></div>"
+			+ "</div>";
+	}
 }

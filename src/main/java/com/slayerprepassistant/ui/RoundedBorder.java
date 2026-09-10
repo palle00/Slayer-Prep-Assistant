@@ -15,8 +15,8 @@ class RoundedBorder implements Border
 
 	RoundedBorder(Color color, int radius)
 	{
-		this.color = color;
-		this.radius = radius;
+		this.color = color == null ? Color.GRAY : color;
+		this.radius = Math.max(0, radius);
 	}
 
 	@Override
@@ -34,10 +34,28 @@ class RoundedBorder implements Border
 	@Override
 	public void paintBorder(Component component, Graphics graphics, int x, int y, int width, int height)
 	{
+		if (graphics == null)
+		{
+			return;
+		}
 		Graphics2D g = (Graphics2D) graphics.create();
-		g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-		g.setColor(color);
-		g.drawRoundRect(x, y, width - 1, height - 1, radius, radius);
-		g.dispose();
+		if (g == null)
+		{
+			return;
+		}
+		try
+		{
+			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+			if (width <= 0 || height <= 0)
+			{
+				return;
+			}
+			g.setColor(color);
+			g.drawRoundRect(x, y, width - 1, height - 1, radius, radius);
+		}
+		finally
+		{
+			g.dispose();
+		}
 	}
 }

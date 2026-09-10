@@ -8,8 +8,8 @@ public class InventoryRecommendation
 
 	public InventoryRecommendation(String itemOrCategory, int minimumQuantity, boolean required)
 	{
-		this.itemOrCategory = itemOrCategory;
-		this.minimumQuantity = minimumQuantity;
+		this.itemOrCategory = itemOrCategory == null ? "" : itemOrCategory;
+		this.minimumQuantity = Math.max(0, minimumQuantity);
 		this.required = required;
 	}
 

@@ -1,5 +1,7 @@
 package com.slayerprepassistant.task;
 
+import java.util.Objects;
+
 public class TargetOption
 {
 	private final String displayName;
@@ -8,9 +10,9 @@ public class TargetOption
 
 	public TargetOption(String displayName, String wikiPage, String strategyPage)
 	{
-		this.displayName = displayName;
-		this.wikiPage = wikiPage;
-		this.strategyPage = strategyPage;
+		this.displayName = displayName == null ? "" : displayName;
+		this.wikiPage = wikiPage == null ? "" : wikiPage;
+		this.strategyPage = strategyPage == null ? "" : strategyPage;
 	}
 
 	public String getDisplayName()
@@ -28,10 +30,6 @@ public class TargetOption
 		return strategyPage;
 	}
 
-	public String lookupKey()
-	{
-		return lookupKey(this);
-	}
 
 	public static String lookupKey(TargetOption target)
 	{
@@ -50,14 +48,14 @@ public class TargetOption
 			return false;
 		}
 		TargetOption that = (TargetOption) other;
-		return java.util.Objects.equals(displayName, that.displayName)
-			&& java.util.Objects.equals(strategyPage, that.strategyPage);
+		return Objects.equals(displayName, that.displayName)
+				&& Objects.equals(strategyPage, that.strategyPage);
 	}
 
 	@Override
 	public int hashCode()
 	{
-		return java.util.Objects.hash(displayName, strategyPage);
+		return Objects.hash(displayName, strategyPage);
 	}
 
 	@Override

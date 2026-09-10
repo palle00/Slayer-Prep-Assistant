@@ -8,6 +8,7 @@ import com.slayerprepassistant.guide.StrategyMethod;
 import com.slayerprepassistant.readiness.ReadinessResult;
 import com.slayerprepassistant.task.SlayerTaskContext;
 import com.slayerprepassistant.task.TargetOption;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -32,13 +33,13 @@ public class PreparationResult
 
 	private PreparationResult(PreparationStatus status, String message, SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, MonsterGuide guide, CombatMethod selectedMethod, StrategyMethod strategyMethod, LoadoutResult loadoutResult, ReadinessResult readinessResult, PlayerInventoryState playerState)
 	{
-		this.status = status;
+		this.status = status == null ? PreparationStatus.NO_SETUP : status;
 		this.message = message == null ? "" : message;
 		this.taskContext = taskContext;
-		this.targets = Collections.unmodifiableList(targets == null ? Collections.emptyList() : targets);
+		this.targets = targets == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(targets));
 		this.selectedTarget = selectedTarget;
 		this.guide = guide;
-		this.selectedMethod = selectedMethod;
+		this.selectedMethod = selectedMethod == null ? CombatMethod.defaultMethod() : selectedMethod;
 		this.strategyMethod = strategyMethod;
 		this.loadoutResult = loadoutResult;
 		this.readinessResult = readinessResult;
@@ -59,11 +60,7 @@ public class PreparationResult
 	{
 		return message;
 	}
-
-	public SlayerTaskContext getTaskContext()
-	{
-		return taskContext;
-	}
+	
 
 	public List<TargetOption> getTargets()
 	{

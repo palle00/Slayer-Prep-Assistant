@@ -1,5 +1,6 @@
 package com.slayerprepassistant.readiness;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -13,11 +14,11 @@ public class ReadinessResult
 
 	public ReadinessResult(int percentage, List<ReadinessIssue> criticalBlockers, List<ReadinessIssue> warnings, List<String> readyItems, List<String> unknownItems)
 	{
-		this.percentage = percentage;
-		this.criticalBlockers = Collections.unmodifiableList(criticalBlockers);
-		this.warnings = Collections.unmodifiableList(warnings);
-		this.readyItems = Collections.unmodifiableList(readyItems);
-		this.unknownItems = Collections.unmodifiableList(unknownItems);
+		this.percentage = Math.max(0, Math.min(100, percentage));
+		this.criticalBlockers = criticalBlockers == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(criticalBlockers));
+		this.warnings = warnings == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(warnings));
+		this.readyItems = readyItems == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(readyItems));
+		this.unknownItems = unknownItems == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(unknownItems));
 	}
 
 	public int getPercentage()

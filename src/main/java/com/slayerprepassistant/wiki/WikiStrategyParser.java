@@ -17,6 +17,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -29,6 +30,11 @@ public class WikiStrategyParser
 
 	public WikiParsingResult parse(String monsterName, String wikiTitle, String wikiUrl, long revisionId, String text)
 	{
+		String safeText = text == null ? "" : text;
+		String safeMonsterName = Objects.requireNonNullElse(monsterName, "");
+		String safeWikiTitle = Objects.requireNonNullElse(wikiTitle, "");
+		String safeWikiUrl = Objects.requireNonNullElse(wikiUrl, "");
+
 		List<String> warnings = new ArrayList<>();
 		Map<CombatMethod, List<String>> methodLines = new EnumMap<>(CombatMethod.class);
 		for (CombatMethod method : CombatMethod.values())
@@ -50,7 +56,7 @@ public class WikiStrategyParser
 
 		String section = "general";
 		CombatMethod currentMethod = CombatMethod.defaultMethod();
-		for (String rawLine : text.split("\\R"))
+		for (String rawLine : safeText.split("\\R"))
 		{
 			String line = rawLine.trim();
 			if (line.isEmpty())
@@ -148,7 +154,7 @@ public class WikiStrategyParser
 			warnings.add("No combat method sections were parsed.");
 		}
 
-		MonsterGuide guide = new MonsterGuide(monsterName, wikiTitle, wikiUrl, revisionId, Instant.now(), methods, notes, warnings.isEmpty() ? ParsingConfidence.MEDIUM : ParsingConfidence.LOW);
+		MonsterGuide guide = new MonsterGuide(safeMonsterName, safeWikiTitle, safeWikiUrl, revisionId, Instant.now(), methods, notes, warnings.isEmpty() ? ParsingConfidence.MEDIUM : ParsingConfidence.LOW);
 		return new WikiParsingResult(guide, variants, warnings);
 	}
 
@@ -165,16 +171,20 @@ public class WikiStrategyParser
 
 	private boolean isInventoryTemplateStart(String line)
 	{
-		return line.toLowerCase(Locale.ROOT).startsWith("{{inventory");
+		return line != null && line.toLowerCase(Locale.ROOT).startsWith("{{inventory");
 	}
 
 	private boolean isTemplateEnd(String line)
 	{
-		return line.trim().equals("}}") || line.trim().endsWith("}}");
+		return line != null && (line.trim().equals("}}") || line.trim().endsWith("}}"));
 	}
 
 	private List<InventoryRecommendation> parseInventoryTemplate(List<String> lines)
 	{
+		if (lines == null || lines.isEmpty())
+		{
+			return Collections.emptyList();
+		}
 		String block = String.join("\n", lines);
 		int start = block.toLowerCase(Locale.ROOT).indexOf("{{inventory");
 		if (start < 0)
@@ -183,8 +193,8 @@ public class WikiStrategyParser
 		}
 		int end = block.lastIndexOf("}}");
 		String content = end > start
-			? block.substring(start + "{{Inventory".length(), end)
-			: block.substring(start + "{{Inventory".length());
+				? block.substring(start + "{{Inventory".length(), end)
+				: block.substring(start + "{{Inventory".length());
 		Map<String, Integer> counts = new LinkedHashMap<>();
 		for (String parameter : splitTemplateParameters(content))
 		{
@@ -204,6 +214,10 @@ public class WikiStrategyParser
 
 	private List<String> splitTemplateParameters(String content)
 	{
+		if (content == null)
+		{
+			return Collections.emptyList();
+		}
 		List<String> parameters = new ArrayList<>();
 		StringBuilder current = new StringBuilder();
 		int templateDepth = 0;
@@ -278,6 +292,10 @@ public class WikiStrategyParser
 
 	private String categorize(String heading)
 	{
+		if (heading == null)
+		{
+			return "general";
+		}
 		if (heading.contains("monster variant"))
 		{
 			return "variants";
@@ -295,6 +313,10 @@ public class WikiStrategyParser
 
 	private CombatMethod methodForHeading(String heading)
 	{
+		if (heading == null)
+		{
+			return null;
+		}
 		if (heading.contains("melee"))
 		{
 			return CombatMethod.MELEE;
@@ -312,7 +334,7 @@ public class WikiStrategyParser
 
 	private void rememberMethod(List<CombatMethod> methodOrder, CombatMethod method)
 	{
-		if (!methodOrder.contains(method))
+		if (method != null && !methodOrder.contains(method))
 		{
 			methodOrder.add(method);
 		}
@@ -320,9 +342,13 @@ public class WikiStrategyParser
 
 	private CombatMethod methodForTabberLine(String line)
 	{
+		if (line == null)
+		{
+			return null;
+		}
 		String normalized = line.trim().toLowerCase(Locale.ROOT)
-			.replaceFirst("^\\|-\\|\\s*", "")
-			.trim();
+				.replaceFirst("^\\|-\\|\\s*", "")
+				.trim();
 		if (normalized.matches("^(ranged|range)(?:\\s*\\([^)]*\\))?\\s*=\\s*$"))
 		{
 			return CombatMethod.RANGED;
@@ -340,6 +366,10 @@ public class WikiStrategyParser
 
 	private void parseVariants(String line, List<MonsterVariant> variants)
 	{
+		if (line == null || variants == null)
+		{
+			return;
+		}
 		Matcher matcher = WIKI_LINK.matcher(line);
 		while (matcher.find())
 		{
@@ -364,6 +394,10 @@ public class WikiStrategyParser
 
 	private String heading(String line)
 	{
+		if (line == null)
+		{
+			return null;
+		}
 		if (line.startsWith("#"))
 		{
 			return line.replace("#", "").trim();
@@ -374,9 +408,17 @@ public class WikiStrategyParser
 
 	private List<GearRecommendation> parseGear(List<String> lines)
 	{
+		if (lines == null || lines.isEmpty())
+		{
+			return Collections.emptyList();
+		}
 		Map<GearSlot, List<GearTier>> tiersBySlot = new EnumMap<>(GearSlot.class);
 		for (String line : lines)
 		{
+			if (line == null || line.trim().isEmpty())
+			{
+				continue;
+			}
 			String[] slotSplit = line.split("[:=]", 2);
 			if (slotSplit.length != 2)
 			{
@@ -419,28 +461,32 @@ public class WikiStrategyParser
 
 	private String stripBullet(String line)
 	{
-		return line.replaceFirst("^[*\\-]+\\s*", "").trim();
+		return line == null ? "" : line.replaceFirst("^[*\\-]+\\s*", "").trim();
 	}
 
 	private String cleanItemName(String value)
 	{
+		if (value == null)
+		{
+			return "";
+		}
 		String cleaned = stripBullet(value)
-			.replaceAll("(?i)<br\\s*/?>", " ")
-			.replaceAll("\\{\\{efn[^}]*}}", "")
-			.replaceAll("\\[\\[[^\\]|]+\\|([^\\]]+)]]", "$1")
-			.replaceAll("\\[\\[([^\\]]+)]]", "$1")
-			.replaceAll("''+", "")
-			.trim();
+				.replaceAll("(?i)<br\\s*/?>", " ")
+				.replaceAll("\\{\\{efn[^}]*}}", "")
+				.replaceAll("\\[\\[[^\\]|]+\\|([^\\]]+)]]", "$1")
+				.replaceAll("\\[\\[([^\\]]+)]]", "$1")
+				.replaceAll("''+", "")
+				.trim();
 		Matcher templateMatcher = TEMPLATE_LINK.matcher(cleaned);
 		if (templateMatcher.find())
 		{
 			cleaned = templateMatcher.group(1).trim();
 		}
 		cleaned = cleaned.replaceAll("\\{\\{[^|}]+\\|([^}|]+)(?:\\|[^}]*)?}}", "$1")
-			.replaceAll("\\{\\{[^}]+}}", "")
-			.replaceAll("\\([^)]*if on a[^)]*\\)", "")
-			.replaceAll("\\s+", " ")
-			.trim();
+				.replaceAll("\\{\\{[^}]+}}", "")
+				.replaceAll("\\([^)]*if on a[^)]*\\)", "")
+				.replaceAll("\\s+", " ")
+				.trim();
 		return cleaned.matches("(?i)n/?a|none|-") ? "" : cleaned;
 	}
 }

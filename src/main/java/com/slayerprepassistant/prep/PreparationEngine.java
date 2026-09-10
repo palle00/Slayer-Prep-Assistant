@@ -18,17 +18,14 @@ import java.util.List;
 public class PreparationEngine
 {
 	private final LoadoutBuilder loadoutBuilder;
-	private final ReadinessService readinessService = new ReadinessService();
-
-	public PreparationEngine()
-	{
-		this(new ItemResolver(), PriceLookup.unavailable());
-	}
+	private final ReadinessService readinessService;
 
 	public PreparationEngine(ItemResolver itemResolver, PriceLookup priceLookup)
 	{
 		this.loadoutBuilder = new LoadoutBuilder(new GearMatcher(itemResolver), priceLookup);
+		this.readinessService = new ReadinessService();
 	}
+
 
 	public PreparationResult prepareGuide(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, MonsterGuide guide, CombatMethod preferredMethod, LoadoutMode loadoutMode, PlayerInventoryState playerState)
 	{
@@ -37,27 +34,48 @@ public class PreparationEngine
 			return PreparationResult.noSetup(taskContext, targets, selectedTarget, "A usable strategy setup could not be found for this monster.");
 		}
 		StrategyMethod strategyMethod = chooseMethod(guide, preferredMethod);
-		com.slayerprepassistant.gear.LoadoutResult loadout = loadoutBuilder.build(strategyMethod.getGear(), playerState, loadoutMode);
-		ReadinessResult readiness = readinessService.evaluate(strategyMethod.getInventory(), loadout);
+		List gearRecs = strategyMethod.getGear() == null ? java.util.Collections.emptyList() : strategyMethod.getGear();
+		com.slayerprepassistant.gear.LoadoutResult loadout = loadoutBuilder.build(gearRecs, playerState, loadoutMode);
+
+		List inventoryRecs = strategyMethod.getInventory() == null ? java.util.Collections.emptyList() : strategyMethod.getInventory();
+		ReadinessResult readiness = readinessService.evaluate(inventoryRecs, loadout);
+
 		return new PreparationResult(taskContext, targets, selectedTarget, guide, strategyMethod.getMethod(), strategyMethod, loadout, readiness, playerState);
 	}
 
 	private boolean hasUsableSetup(MonsterGuide guide)
 	{
-		return guide != null && guide.getMethods().stream().anyMatch(method -> !method.getGear().isEmpty());
+		if (guide == null || guide.getMethods() == null)
+		{
+			return false;
+		}
+		return guide.getMethods().stream().anyMatch(method -> method != null && method.getGear() != null && !method.getGear().isEmpty());
 	}
 
 	private StrategyMethod chooseMethod(MonsterGuide guide, CombatMethod preferredMethod)
 	{
+		if (guide == null || guide.getMethods() == null || guide.getMethods().isEmpty())
+		{
+			return new StrategyMethod(CombatMethod.defaultMethod(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), com.slayerprepassistant.model.ParsingConfidence.UNKNOWN);
+		}
+
+		CombatMethod effectivePreferred = preferredMethod == null ? CombatMethod.defaultMethod() : preferredMethod;
 		for (StrategyMethod method : guide.getMethods())
 		{
-			if (method.getMethod() == preferredMethod)
+			if (method != null && method.getMethod() == effectivePreferred)
 			{
 				return method;
 			}
 		}
-		return guide.getMethods().isEmpty()
-			? new StrategyMethod(CombatMethod.defaultMethod(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), com.slayerprepassistant.model.ParsingConfidence.UNKNOWN)
-			: guide.getMethods().get(0);
+
+		for (StrategyMethod method : guide.getMethods())
+		{
+			if (method != null)
+			{
+				return method;
+			}
+		}
+
+		return new StrategyMethod(CombatMethod.defaultMethod(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), com.slayerprepassistant.model.ParsingConfidence.UNKNOWN);
 	}
 }

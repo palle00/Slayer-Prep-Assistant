@@ -2,6 +2,7 @@ package com.slayerprepassistant.task;
 
 import com.slayerprepassistant.wiki.WikiTitles;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class TaskTargetResolver
@@ -10,9 +11,22 @@ public class TaskTargetResolver
 	{
 		if (taskContext == null || !taskContext.isActive())
 		{
-			return new ArrayList<>();
+			return Collections.emptyList();
 		}
-		String title = WikiTitles.wikiTitle(taskContext.getTaskName());
-		return java.util.Collections.singletonList(new TargetOption(title, title, "Strategies/" + title));
+
+		String taskName = taskContext.getTaskName();
+		if (taskName == null || taskName.trim().isEmpty())
+		{
+			return Collections.emptyList();
+		}
+
+		String title = WikiTitles.wikiTitle(taskName);
+		if (title == null || title.trim().isEmpty())
+		{
+			title = taskName.trim();
+		}
+
+		TargetOption option = new TargetOption(title, title, "Strategies/" + title);
+		return Collections.singletonList(option);
 	}
 }

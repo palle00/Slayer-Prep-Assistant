@@ -16,21 +16,38 @@ public final class WikiPageCandidates
 	{
 		Set<String> candidates = new LinkedHashSet<>();
 		add(candidates, preferredStrategyPage);
+
+		if (target == null)
+		{
+			return new ArrayList<>(candidates);
+		}
+
 		String wikiPage = target.getWikiPage();
-		String singular = WikiTitles.singularTitle(wikiPage);
-		add(candidates, target.getStrategyPage());
-		add(candidates, "Strategies/" + wikiPage);
-		add(candidates, wikiPage + "/Strategies");
-		add(candidates, "Strategies/" + singular);
-		add(candidates, singular + "/Strategies");
+		if (wikiPage != null && !wikiPage.trim().isEmpty())
+		{
+			String singular = WikiTitles.singularTitle(wikiPage);
+			add(candidates, target.getStrategyPage());
+			add(candidates, "Strategies/" + wikiPage);
+			add(candidates, wikiPage + "/Strategies");
+			add(candidates, "Strategies/" + singular);
+			add(candidates, singular + "/Strategies");
+		}
+
 		return new ArrayList<>(candidates);
 	}
 
 	public static List<String> variantPages(TargetOption target)
 	{
 		Set<String> candidates = new LinkedHashSet<>();
-		addVariantPages(candidates, target.getWikiPage());
-		addVariantPages(candidates, WikiTitles.singularTitle(target.getWikiPage()));
+		if (target != null)
+		{
+			String wikiPage = target.getWikiPage();
+			addVariantPages(candidates, wikiPage);
+			if (wikiPage != null && !wikiPage.trim().isEmpty())
+			{
+				addVariantPages(candidates, WikiTitles.singularTitle(wikiPage));
+			}
+		}
 		return new ArrayList<>(candidates);
 	}
 

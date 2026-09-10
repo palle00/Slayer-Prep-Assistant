@@ -4,6 +4,7 @@ import com.slayerprepassistant.items.ItemResolver;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.Locale;
+import java.util.Objects;
 
 public final class WikiTitles
 {
@@ -31,7 +32,7 @@ public final class WikiTitles
 
 	public static String singularTitle(String title)
 	{
-		if (title == null)
+		if (title == null || title.trim().isEmpty())
 		{
 			return "";
 		}
@@ -41,10 +42,14 @@ public final class WikiTitles
 
 	public static String wikiTitle(String input)
 	{
+		if (input == null || input.trim().isEmpty())
+		{
+			return "";
+		}
 		String normalized = ItemResolver.normalize(input);
 		if (normalized.isEmpty())
 		{
-			return input == null ? "" : input.trim();
+			return input.trim();
 		}
 		return normalized.substring(0, 1).toUpperCase(Locale.ROOT) + normalized.substring(1);
 	}

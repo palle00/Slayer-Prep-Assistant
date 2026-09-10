@@ -24,7 +24,9 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.GridLayout;
+import java.awt.Graphics2D;
 import java.awt.Image;
+import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -44,18 +46,19 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.border.Border;
+import net.runelite.api.Skill;
 import net.runelite.client.game.ItemManager;
+import net.runelite.client.game.SkillIconManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.AsyncBufferedImage;
-import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
 
 public class SlayerPrepAssistantPanel extends PluginPanel
 {
-	static final Color BACKGROUND = new Color(25, 25, 25);
-	static final Color PANEL = new Color(30, 30, 30);
-	static final Color PANEL_LIGHT = new Color(38, 38, 38);
-	static final Color BORDER = new Color(44, 44, 44);
+	static final Color BACKGROUND = new Color(46, 46, 46);
+	static final Color PANEL = new Color(34, 34, 34);
+	static final Color PANEL_LIGHT = new Color(24, 24, 24);
+	static final Color BORDER = new Color(60, 60, 60);
 	static final Color TEXT = new Color(230, 230, 230);
 	static final Color MUTED = new Color(168, 168, 168);
 	static final Color GOLD = new Color(255, 176, 0);
@@ -83,6 +86,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private final RuneLiteItemLookup itemLookup;
 	private final GearMatcher gearMatcher;
 	private final BufferedImage pluginIcon;
+	private final SkillIconManager skillIconManager = new SkillIconManager();
 
 	private final JPanel body = verticalPanel(BACKGROUND);
 	private final JPanel controlsPanel = verticalPanel(PANEL);
@@ -105,7 +109,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private JComponent readinessPanel;
 	private final CircularReadinessBadge readinessBadge = new CircularReadinessBadge();
 	private final JButton openWikiButton = new JButton("Open Wiki Page");
-	private final JComboBox<TargetOption> noSetupVariantSelect = new JComboBox<>();
 	private final List<CombatMethod> methodChoices = new ArrayList<>();
 	private final Timer skeletonTimer;
 
@@ -144,17 +147,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 			skeletonFrame = (skeletonFrame + 1) % 12;
 			resultPanel.repaint();
 		});
-		noSetupVariantSelect.addActionListener(event ->
-		{
-			if (!rebuilding && noSetupVariantSelect.getSelectedItem() instanceof TargetOption)
-			{
-				TargetOption target = (TargetOption) noSetupVariantSelect.getSelectedItem();
-				selectedTarget = target;
-				currentWikiUrl = wikiUrl(target);
-				targetConsumer.accept(target);
-			}
-		});
-
 		setLayout(new BorderLayout());
 		setBackground(BACKGROUND);
 		setPreferredSize(new Dimension(SIDEBAR_WIDTH, 0));
@@ -218,7 +210,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				return;
 			}
 			displayedTaskImage = image;
-			taskIconLabel.setIcon(new ImageIcon(ImageUtil.resizeImage(image == null ? pluginIcon : image, 48, 48)));
+			taskIconLabel.setIcon(new ImageIcon(fitImage(image == null ? pluginIcon : image, 48, 48)));
 			refreshUi();
 		});
 	}
@@ -240,10 +232,10 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		SwingUtilities.invokeLater(() ->
 		{
 			stopSkeletonLoading();
-			currentResult = null;
 			selectedTarget = null;
-			rebuildTargetControl(variants, true);
-			rebuildStatePanel("NO DIRECT SETUP", message, "Choose a monster variant above.");
+			currentResult = PreparationResult.noSetup(taskContext, variants, null, message);
+			lastResultRenderKey = "";
+			rebuildResult();
 		});
 	}
 
@@ -304,7 +296,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		JPanel panel = card(new BorderLayout(8, 0));
 		JPanel row = new JPanel(new BorderLayout(8, 0));
 		row.setBackground(PANEL);
-		taskIconLabel.setIcon(new ImageIcon(ImageUtil.resizeImage(pluginIcon, 48, 48)));
+		taskIconLabel.setIcon(new ImageIcon(fitImage(pluginIcon, 48, 48)));
 		taskIconLabel.setHorizontalAlignment(SwingConstants.CENTER);
 		taskIconLabel.setPreferredSize(new Dimension(56, 56));
 		taskIconLabel.setBorder(BorderFactory.createLineBorder(new Color(48, 48, 48)));
@@ -402,11 +394,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		{
 			url = wikiUrl(selectedTarget);
 		}
-		Object noSetupTarget = noSetupVariantSelect.getSelectedItem();
-		if ((url == null || url.isEmpty()) && noSetupTarget instanceof TargetOption)
-		{
-			url = wikiUrl((TargetOption) noSetupTarget);
-		}
 		Object dropdownTarget = targetSelect.getSelectedItem();
 		if ((url == null || url.isEmpty()) && dropdownTarget instanceof TargetOption)
 		{
@@ -451,9 +438,8 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		if (currentResult.getStatus() == PreparationStatus.NO_SETUP)
 		{
 			rebuildReadiness(0, false);
+			rebuildTargetControl(currentResult.getTargets(), currentResult.getTargets().size() > 1 && selectedTarget == null);
 			showSetupControls(false);
-			showTargetControl(false);
-			controlsPanel.setVisible(false);
 			rebuildNoSetupPanel();
 			return;
 		}
@@ -492,7 +478,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private void rebuildNoSetupPanel()
 	{
 		stopSkeletonLoading();
-		if (selectedTarget == null && currentResult != null && !currentResult.getTargets().isEmpty())
+		if (selectedTarget == null && currentResult != null && currentResult.getTargets().size() == 1)
 		{
 			selectedTarget = currentResult.getTargets().get(0);
 		}
@@ -501,7 +487,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 		JPanel state = card(new BorderLayout(0, 8));
 		state.setBorder(BorderFactory.createCompoundBorder(
-			roundedBorder(new Color(82, 82, 82), CARD_RADIUS),
+			roundedBorder(new Color(70, 70, 70), CARD_RADIUS),
 			BorderFactory.createEmptyBorder(12, 8, 12, 8)));
 		JComponent icon = new NoSetupIcon();
 		icon.setAlignmentX(Component.CENTER_ALIGNMENT);
@@ -521,43 +507,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		fitHeight(state);
 		resultPanel.add(state);
 
-		if (currentResult.getTargets().size() > 1)
-		{
-			resultPanel.add(spacer(5));
-			resultPanel.add(noSetupVariantsPanel());
-		}
-
 		refreshUi();
-	}
-
-	private JPanel noSetupVariantsPanel()
-	{
-		JPanel panel = card(new BorderLayout(0, 7));
-		JPanel hint = new JPanel(new BorderLayout(7, 0));
-		hint.setBackground(PANEL);
-		hint.add(label("i", BLUE, Font.BOLD, FONT_MD), BorderLayout.WEST);
-		hint.add(wrapped("This monster has variants you can try", MUTED), BorderLayout.CENTER);
-		panel.add(hint, BorderLayout.NORTH);
-
-		rebuilding = true;
-		noSetupVariantSelect.removeAllItems();
-		for (TargetOption target : currentResult.getTargets())
-		{
-			noSetupVariantSelect.addItem(target);
-		}
-		if (selectedTarget != null && currentResult.getTargets().contains(selectedTarget))
-		{
-			noSetupVariantSelect.setSelectedItem(selectedTarget);
-		}
-		else
-		{
-			noSetupVariantSelect.setSelectedIndex(0);
-		}
-		rebuilding = false;
-		styleCombo(noSetupVariantSelect);
-		panel.add(noSetupVariantSelect, BorderLayout.CENTER);
-		fitHeight(panel);
-		return panel;
 	}
 
 	private void rebuildSkeletonLoading()
@@ -668,7 +618,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private JPanel gearRow(GearMatch match, int index)
 	{
-		Color rowBackground = index % 2 == 0 ? new Color(32, 32, 32) : new Color(27, 27, 27);
+		Color rowBackground = index % 2 == 0 ? new Color(29, 29, 29) : new Color(24, 24, 24);
 		JPanel wrapper = verticalPanel(rowBackground);
 		wrapper.setBorder(BorderFactory.createCompoundBorder(
 			BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER),
@@ -782,39 +732,40 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	{
 		List<TargetOption> safeTargets = targets == null ? Collections.emptyList() : targets;
 		String targetRenderKey = awaitSelection + "|" + TargetOption.lookupKey(selectedTarget) + "|" + targetsKey(safeTargets);
-		if (targetRenderKey.equals(lastTargetRenderKey))
+		boolean targetControlChanged = !targetRenderKey.equals(lastTargetRenderKey);
+		if (targetControlChanged)
 		{
-			return;
-		}
-		lastTargetRenderKey = targetRenderKey;
-		rebuilding = true;
-		targetSelect.removeAllItems();
-		for (TargetOption target : safeTargets)
-		{
-			targetSelect.addItem(target);
-		}
-		boolean showDropdown = safeTargets.size() > 1 || awaitSelection;
-		((CardLayout) targetCards.getLayout()).show(targetCards, showDropdown ? "select" : "label");
-		if (showDropdown)
-		{
-			if (awaitSelection)
+			lastTargetRenderKey = targetRenderKey;
+			rebuilding = true;
+			targetSelect.removeAllItems();
+			for (TargetOption target : safeTargets)
 			{
-				targetSelect.setSelectedIndex(-1);
+				targetSelect.addItem(target);
 			}
-			else if (selectedTarget != null && safeTargets.contains(selectedTarget))
+			boolean showDropdown = safeTargets.size() > 1 || awaitSelection;
+			((CardLayout) targetCards.getLayout()).show(targetCards, showDropdown ? "select" : "label");
+			if (showDropdown)
 			{
-				targetSelect.setSelectedItem(selectedTarget);
+				if (awaitSelection)
+				{
+					targetSelect.setSelectedIndex(-1);
+				}
+				else if (selectedTarget != null && safeTargets.contains(selectedTarget))
+				{
+					targetSelect.setSelectedItem(selectedTarget);
+				}
+				else if (!safeTargets.isEmpty())
+				{
+					targetSelect.setSelectedIndex(0);
+				}
 			}
-			else if (!safeTargets.isEmpty())
-			{
-				targetSelect.setSelectedIndex(0);
-			}
+			targetLabel.setText(safeTargets.isEmpty() ? "No target selected" : safeTargets.get(0).getDisplayName());
+			rebuilding = false;
 		}
-		targetLabel.setText(safeTargets.isEmpty() ? "No target selected" : safeTargets.get(0).getDisplayName());
-		rebuilding = false;
 		boolean noSetupState = currentResult != null && currentResult.getStatus() == PreparationStatus.NO_SETUP;
-		showTargetControl(!noSetupState);
-		controlsPanel.setVisible(!safeTargets.isEmpty() && !noSetupState);
+		boolean selectableNoSetupTargets = noSetupState && (safeTargets.size() > 1 || awaitSelection);
+		showTargetControl(!noSetupState || selectableNoSetupTargets);
+		controlsPanel.setVisible(!safeTargets.isEmpty() && (!noSetupState || selectableNoSetupTargets));
 		if (!safeTargets.isEmpty() && currentResult == null)
 		{
 			showSetupControls(false);
@@ -845,13 +796,21 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		methodPanel.setLayout(new GridLayout(1, Math.max(1, methodChoices.size()), 4, 0));
 		if (methodChoices.size() <= 1)
 		{
-			methodPanel.add(label(methodChoices.isEmpty() ? CombatMethod.defaultMethod().toString() : methodChoices.get(0).toString(), TEXT, Font.PLAIN, FONT_XS));
+			CombatMethod method = methodChoices.isEmpty() ? CombatMethod.defaultMethod() : methodChoices.get(0);
+			JLabel label = new JLabel(methodIcon(method));
+			label.setHorizontalAlignment(SwingConstants.CENTER);
+			label.setToolTipText(methodLabel(method));
+			label.setBorder(BorderFactory.createCompoundBorder(
+				roundedBorder(GOLD, CONTROL_RADIUS),
+				BorderFactory.createEmptyBorder(3, 3, 3, 3)));
+			methodPanel.add(label);
 			return;
 		}
 		for (CombatMethod method : methodChoices)
 		{
-			JButton button = styledButton(methodLabel(method));
-			setMethodIcon(button, method);
+			JButton button = styledButton(new JButton(methodIcon(method)));
+			button.setText("");
+			button.setToolTipText(methodLabel(method));
 			button.setFont(button.getFont().deriveFont(Font.PLAIN, FONT_XS));
 			button.setBorder(BorderFactory.createCompoundBorder(
 				roundedBorder(method == selectedMethod ? GOLD : BORDER, CONTROL_RADIUS),
@@ -983,7 +942,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		fallback.setBorder(BorderFactory.createLineBorder(BORDER));
 		loadWikiItemImage(item, size, image ->
 		{
-			fallback.setIcon(new ImageIcon(ImageUtil.resizeImage(image, size, size)));
+			fallback.setIcon(new ImageIcon(fitImage(image, size, size)));
 			fallback.setText("");
 			fallback.setBorder(null);
 			fallback.revalidate();
@@ -1093,7 +1052,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private void styleCombo(JComboBox<?> comboBox)
 	{
 		comboBox.setForeground(TEXT);
-		comboBox.setBackground(new Color(18, 18, 18));
+		comboBox.setBackground(new Color(20, 20, 20));
 		comboBox.setFont(comboBox.getFont().deriveFont(Font.PLAIN, FONT_SM));
 		comboBox.setBorder(controlBorder(false));
 		comboBox.setFocusable(false);
@@ -1121,30 +1080,49 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		}
 	}
 
-	private void setMethodIcon(JButton button, CombatMethod method)
+	private ImageIcon methodIcon(CombatMethod method)
 	{
-		String itemName;
+		Skill skill;
 		switch (method)
 		{
 			case MELEE:
-				itemName = "Abyssal whip";
+				skill = Skill.ATTACK;
 				break;
 			case RANGED:
-				itemName = "Rune crossbow";
+				skill = Skill.RANGED;
 				break;
 			case MAGIC:
-				itemName = "Wizard hat";
+				skill = Skill.MAGIC;
 				break;
 			default:
-				itemName = "";
-				break;
+				skill = Skill.ATTACK;
 		}
-		Image image = itemName.isEmpty() ? null : itemImage(new RecommendedItem(itemName), 18);
-		if (image != null)
+		BufferedImage image = skillIconManager.getSkillImage(skill);
+		return image == null ? null : new ImageIcon(fitImage(image, 22, 22));
+	}
+
+	private static BufferedImage fitImage(Image image, int maxWidth, int maxHeight)
+	{
+		if (image == null || maxWidth <= 0 || maxHeight <= 0)
 		{
-			button.setIcon(new ImageIcon(image));
-			button.setIconTextGap(4);
+			return new BufferedImage(Math.max(1, maxWidth), Math.max(1, maxHeight), BufferedImage.TYPE_INT_ARGB);
 		}
+		int sourceWidth = image.getWidth(null);
+		int sourceHeight = image.getHeight(null);
+		if (sourceWidth <= 0 || sourceHeight <= 0)
+		{
+			return new BufferedImage(maxWidth, maxHeight, BufferedImage.TYPE_INT_ARGB);
+		}
+
+		double scale = Math.min(1.0, Math.min(maxWidth / (double) sourceWidth, maxHeight / (double) sourceHeight));
+		int width = Math.max(1, (int) Math.round(sourceWidth * scale));
+		int height = Math.max(1, (int) Math.round(sourceHeight * scale));
+		BufferedImage fitted = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+		Graphics2D g = fitted.createGraphics();
+		g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+		g.drawImage(image, 0, 0, width, height, null);
+		g.dispose();
+		return fitted;
 	}
 
 	private Border roundedBorder(Color color, int radius)

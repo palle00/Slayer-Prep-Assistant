@@ -20,15 +20,22 @@ public class LoadoutBuilder
 	public LoadoutBuilder(GearMatcher gearMatcher, PriceLookup priceLookup)
 	{
 		this.gearMatcher = gearMatcher;
-		this.priceLookup = priceLookup;
+		this.priceLookup = priceLookup == null ? PriceLookup.unavailable() : priceLookup;
 	}
 
 	public LoadoutResult build(List<GearRecommendation> recommendations, PlayerInventoryState state, LoadoutMode mode)
 	{
-		List<GearMatch> matches = new ArrayList<>();
+		if (recommendations == null || recommendations.isEmpty())
+		{
+			return new LoadoutResult(mode, java.util.Collections.emptyList());
+		}
+		List<GearMatch> matches = new ArrayList<>(recommendations.size());
 		for (GearRecommendation recommendation : recommendations)
 		{
-			matches.add(selectForSlot(recommendation, state, mode));
+			if (recommendation != null)
+			{
+				matches.add(selectForSlot(recommendation, state, mode));
+			}
 		}
 		return new LoadoutResult(mode, matches);
 	}
@@ -40,13 +47,10 @@ public class LoadoutBuilder
 		{
 			return new GearMatch(recommendation.getSlot(), new RecommendedItem("No recommendation"), OwnershipState.UNKNOWN, Integer.MAX_VALUE);
 		}
-		if (mode == LoadoutMode.MAX)
+		LoadoutMode effectiveMode = mode == null ? LoadoutMode.MAX : mode;
+		if (effectiveMode == LoadoutMode.MAX)
 		{
 			return candidates.get(0);
-		}
-		if (mode == LoadoutMode.BEST_VALUE)
-		{
-			return bestValue(candidates);
 		}
 		for (GearMatch candidate : candidates)
 		{
@@ -60,14 +64,25 @@ public class LoadoutBuilder
 
 	private List<GearMatch> rankedCandidates(GearRecommendation recommendation, PlayerInventoryState state)
 	{
-		List<GearTier> tiers = new ArrayList<>(recommendation.getTiers());
-		tiers.sort(Comparator.comparingInt(GearTier::getPriority));
-		List<GearMatch> candidates = new ArrayList<>();
-		for (GearTier tier : tiers)
+		List<GearTier> tiers = recommendation.getTiers();
+		if (tiers == null || tiers.isEmpty())
 		{
-			for (RecommendedItem item : tier.getAlternatives())
+			return java.util.Collections.emptyList();
+		}
+		List<GearTier> sortedTiers = new ArrayList<>(tiers);
+		sortedTiers.sort(Comparator.comparingInt(GearTier::getPriority));
+		List<GearMatch> candidates = new ArrayList<>();
+		for (GearTier tier : sortedTiers)
+		{
+			if (tier != null && tier.getAlternatives() != null)
 			{
-				candidates.add(new GearMatch(recommendation.getSlot(), item, gearMatcher.ownershipFor(item, state), tier.getPriority()));
+				for (RecommendedItem item : tier.getAlternatives())
+				{
+					if (item != null)
+					{
+						candidates.add(new GearMatch(recommendation.getSlot(), item, gearMatcher.ownershipFor(item, state), tier.getPriority()));
+					}
+				}
 			}
 		}
 		return candidates;
@@ -75,13 +90,6 @@ public class LoadoutBuilder
 
 	private GearMatch bestValue(List<GearMatch> candidates)
 	{
-		/*
-		 * Best Value is intentionally not a DPS calculation. Wiki rank defines quality;
-		 * price only decides which higher-ranked upgrade is the lowest-cost move above
-		 * the player's best owned option. If prices are unavailable, the mode falls
-		 * back to the owned baseline, or to the top Wiki recommendation when nothing
-		 * is known to be owned.
-		 */
 		GearMatch ownedBaseline = null;
 		for (GearMatch candidate : candidates)
 		{

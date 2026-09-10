@@ -9,16 +9,19 @@ import com.slayerprepassistant.guide.InventoryRecommendation;
 import com.slayerprepassistant.guide.MonsterGuide;
 import com.slayerprepassistant.guide.StrategyMethod;
 import com.slayerprepassistant.model.ParsingConfidence;
+
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 class RenderedStrategyParser
 {
@@ -40,11 +43,14 @@ class RenderedStrategyParser
 		{
 			return source;
 		}
-		List<StrategyMethod> htmlMethods = parseMethods(renderedHtml);
+
+		CombatMethod fallbackMethod = fallbackMethod(source);
+		List<StrategyMethod> htmlMethods = parseMethods(renderedHtml, fallbackMethod);
 		if (htmlMethods.isEmpty())
 		{
 			return source;
 		}
+
 		List<StrategyMethod> mergedMethods = new ArrayList<>();
 		for (StrategyMethod sourceMethod : source.getGuide().getMethods())
 		{
@@ -52,46 +58,70 @@ class RenderedStrategyParser
 			if (htmlMethod == null)
 			{
 				mergedMethods.add(sourceMethod);
-				continue;
 			}
-			mergedMethods.add(new StrategyMethod(
-				sourceMethod.getMethod(),
-				mergeMaxGear(htmlMethod.getGear(), sourceMethod.getGear()),
-				htmlMethod.getInventory().isEmpty() ? sourceMethod.getInventory() : htmlMethod.getInventory(),
-				sourceMethod.getNotes(),
-				sourceMethod.getConfidence()));
-		}
-		for (StrategyMethod htmlMethod : htmlMethods)
-		{
-			if (findMethod(mergedMethods, htmlMethod.getMethod()) == null)
+			else
 			{
-				mergedMethods.add(htmlMethod);
+				mergedMethods.add(new StrategyMethod(
+						sourceMethod.getMethod(),
+						mergeMaxGear(htmlMethod.getGear(), sourceMethod.getGear()),
+						htmlMethod.getInventory().isEmpty() ? sourceMethod.getInventory() : htmlMethod.getInventory(),
+						sourceMethod.getNotes(),
+						sourceMethod.getConfidence()));
 			}
 		}
+
+		htmlMethods.stream()
+				.filter(hm -> findMethod(mergedMethods, hm.getMethod()) == null)
+				.forEach(mergedMethods::add);
+
 		MonsterGuide guide = source.getGuide();
 		return new WikiParsingResult(
-			new MonsterGuide(guide.getMonsterName(), guide.getWikiTitle(), guide.getWikiUrl(), guide.getRevisionId(), guide.getFetchedAt(), mergedMethods, guide.getNotes(), guide.getConfidence()),
-			source.getVariants(),
-			source.getWarnings());
+				new MonsterGuide(guide.getMonsterName(), guide.getWikiTitle(), guide.getWikiUrl(), guide.getRevisionId(), guide.getFetchedAt(), mergedMethods, guide.getNotes(), guide.getConfidence()),
+				source.getVariants(),
+				source.getWarnings());
 	}
 
-	private List<StrategyMethod> parseMethods(String html)
+	private CombatMethod fallbackMethod(WikiParsingResult source)
+	{
+		List<StrategyMethod> methods = source.getGuide().getMethods();
+		return methods.size() == 1 ? methods.get(0).getMethod() : null;
+	}
+
+	private List<StrategyMethod> parseMethods(String html, CombatMethod fallbackMethod)
 	{
 		List<StrategyMethod> methods = new ArrayList<>();
 		Matcher tabMatcher = TABBER_TAB.matcher(html);
+		boolean sawTab = false;
+
 		while (tabMatcher.find())
 		{
+			sawTab = true;
 			CombatMethod method = methodForHeading(htmlText(tabMatcher.group(1)).toLowerCase(Locale.ROOT));
+			if (method == null)
+			{
+				method = fallbackMethod;
+			}
 			if (method == null)
 			{
 				continue;
 			}
+
 			String tabHtml = tabMatcher.group(2);
 			List<GearRecommendation> gear = parseEquipment(tabHtml);
 			List<InventoryRecommendation> inventory = parseInventory(tabHtml);
+
 			if (!gear.isEmpty() || !inventory.isEmpty())
 			{
 				methods.add(new StrategyMethod(method, gear, inventory, Collections.emptyList(), ParsingConfidence.HIGH));
+			}
+		}
+		if (!sawTab && fallbackMethod != null)
+		{
+			List<GearRecommendation> gear = parseEquipment(html);
+			List<InventoryRecommendation> inventory = parseInventory(html);
+			if (!gear.isEmpty() || !inventory.isEmpty())
+			{
+				methods.add(new StrategyMethod(fallbackMethod, gear, inventory, Collections.emptyList(), ParsingConfidence.HIGH));
 			}
 		}
 		return methods;
@@ -99,82 +129,57 @@ class RenderedStrategyParser
 
 	private CombatMethod methodForHeading(String heading)
 	{
-		if (heading.contains("melee"))
-		{
-			return CombatMethod.MELEE;
-		}
-		if (heading.contains("ranged") || heading.contains("range"))
-		{
-			return CombatMethod.RANGED;
-		}
-		if (heading.contains("magic") || heading.contains("mage"))
-		{
-			return CombatMethod.MAGIC;
-		}
+		if (heading.contains("melee")) return CombatMethod.MELEE;
+		if (heading.contains("ranged") || heading.contains("range")) return CombatMethod.RANGED;
+		if (heading.contains("magic") || heading.contains("mage")) return CombatMethod.MAGIC;
 		return null;
 	}
 
 	private StrategyMethod findMethod(List<StrategyMethod> methods, CombatMethod method)
 	{
-		for (StrategyMethod candidate : methods)
-		{
-			if (candidate.getMethod() == method)
-			{
-				return candidate;
-			}
-		}
-		return null;
+		return methods.stream()
+				.filter(m -> m.getMethod() == method)
+				.findFirst()
+				.orElse(null);
 	}
 
 	private List<GearRecommendation> mergeMaxGear(List<GearRecommendation> maxGear, List<GearRecommendation> alternatives)
 	{
 		Map<GearSlot, List<GearTier>> bySlot = new EnumMap<>(GearSlot.class);
-		for (GearRecommendation recommendation : maxGear)
-		{
-			bySlot.computeIfAbsent(recommendation.getSlot(), ignored -> new ArrayList<>()).addAll(recommendation.getTiers());
-		}
+
+		maxGear.forEach(rec -> bySlot.computeIfAbsent(rec.getSlot(), k -> new ArrayList<>()).addAll(rec.getTiers()));
+
 		for (GearRecommendation recommendation : alternatives)
 		{
-			List<GearTier> tiers = bySlot.computeIfAbsent(recommendation.getSlot(), ignored -> new ArrayList<>());
-			int offset = tiers.isEmpty() ? 0 : tiers.stream().mapToInt(GearTier::getPriority).max().orElse(0);
+			List<GearTier> tiers = bySlot.computeIfAbsent(recommendation.getSlot(), k -> new ArrayList<>());
+			int offset = tiers.stream().mapToInt(GearTier::getPriority).max().orElse(0);
+
 			for (GearTier tier : recommendation.getTiers())
 			{
-				List<RecommendedItem> items = new ArrayList<>();
-				for (RecommendedItem item : tier.getAlternatives())
-				{
-					if (!containsItem(tiers, item.getName()))
-					{
-						items.add(item);
-					}
-				}
+				List<RecommendedItem> items = tier.getAlternatives().stream()
+						.filter(item -> !containsItem(tiers, item.getName()))
+						.collect(Collectors.toList());
+
 				if (!items.isEmpty())
 				{
 					tiers.add(new GearTier(offset + tier.getPriority(), items));
 				}
 			}
 		}
-		List<GearRecommendation> merged = new ArrayList<>();
-		for (Map.Entry<GearSlot, List<GearTier>> entry : bySlot.entrySet())
-		{
-			entry.getValue().sort(java.util.Comparator.comparingInt(GearTier::getPriority));
-			merged.add(new GearRecommendation(entry.getKey(), entry.getValue()));
-		}
-		return merged;
+
+		return bySlot.entrySet().stream()
+				.map(entry -> {
+					entry.getValue().sort(Comparator.comparingInt(GearTier::getPriority));
+					return new GearRecommendation(entry.getKey(), entry.getValue());
+				})
+				.collect(Collectors.toList());
 	}
 
 	private boolean containsItem(List<GearTier> tiers, String name)
 	{
-		for (GearTier tier : tiers)
-		{
-			for (RecommendedItem item : tier.getAlternatives())
-			{
-				if (item.getName().equalsIgnoreCase(name))
-				{
-					return true;
-				}
-			}
-		}
-		return false;
+		return tiers.stream()
+				.flatMap(tier -> tier.getAlternatives().stream())
+				.anyMatch(item -> item.getName().equalsIgnoreCase(name));
 	}
 
 	private List<GearRecommendation> parseEquipment(String html)
@@ -184,6 +189,7 @@ class RenderedStrategyParser
 		{
 			return Collections.emptyList();
 		}
+
 		Map<GearSlot, List<GearTier>> bySlot = new EnumMap<>(GearSlot.class);
 		for (String tableHtml : blocks)
 		{
@@ -194,18 +200,17 @@ class RenderedStrategyParser
 				int slotStart = slotMatcher.end();
 				int slotEnd = nextSlotStart(tableHtml, slotStart);
 				List<RecommendedItem> items = htmlItems(tableHtml.substring(slotStart, slotEnd));
+
 				if (slot != null && !items.isEmpty())
 				{
 					bySlot.put(slot, Collections.singletonList(new GearTier(0, items)));
 				}
 			}
 		}
-		List<GearRecommendation> recommendations = new ArrayList<>();
-		for (Map.Entry<GearSlot, List<GearTier>> entry : bySlot.entrySet())
-		{
-			recommendations.add(new GearRecommendation(entry.getKey(), entry.getValue()));
-		}
-		return recommendations;
+
+		return bySlot.entrySet().stream()
+				.map(entry -> new GearRecommendation(entry.getKey(), entry.getValue()))
+				.collect(Collectors.toList());
 	}
 
 	private List<String> equipmentBlocks(String html)
@@ -241,37 +246,33 @@ class RenderedStrategyParser
 		{
 			return Collections.emptyList();
 		}
-		List<InventoryRecommendation> inventory = new ArrayList<>();
-		for (RecommendedItem item : htmlItems(tableMatcher.group(1)))
-		{
-			inventory.add(new InventoryRecommendation(item.getName(), 0, true));
-		}
-		return inventory;
+
+		return htmlItems(tableMatcher.group(1)).stream()
+				.map(item -> new InventoryRecommendation(item.getName(), 0, true))
+				.collect(Collectors.toList());
 	}
 
 	private List<RecommendedItem> htmlItems(String html)
 	{
 		List<RecommendedItem> items = new ArrayList<>();
+
 		Matcher linkMatcher = HTML_LINK.matcher(html);
 		while (linkMatcher.find())
 		{
 			String attributes = linkMatcher.group(1);
 			Matcher hrefMatcher = HTML_HREF.matcher(attributes);
 			Matcher titleMatcher = HTML_TITLE.matcher(attributes);
-			if (!hrefMatcher.find() || !titleMatcher.find())
+
+			if (hrefMatcher.find() && titleMatcher.find() && !hrefMatcher.group(1).contains(":"))
 			{
-				continue;
-			}
-			if (hrefMatcher.group(1).contains(":"))
-			{
-				continue;
-			}
-			String name = htmlText(titleMatcher.group(1));
-			if (isUsableItemTitle(name) && !containsRecommended(items, name))
-			{
-				items.add(new RecommendedItem(name));
+				String name = htmlText(titleMatcher.group(1));
+				if (isUsableItemTitle(name) && !containsRecommended(items, name))
+				{
+					items.add(new RecommendedItem(name));
+				}
 			}
 		}
+
 		Matcher imageMatcher = HTML_IMAGE.matcher(html);
 		while (imageMatcher.find())
 		{
@@ -338,36 +339,29 @@ class RenderedStrategyParser
 	{
 		String normalized = name.toLowerCase(Locale.ROOT).trim();
 		return !normalized.isEmpty()
-			&& !normalized.endsWith(" slot")
-			&& !normalized.contains("placeholder")
-			&& !normalized.equals("special attack")
-			&& !normalized.equals("empty")
-			&& !normalized.equals("n/a")
-			&& !normalized.equals("none");
+				&& !normalized.endsWith(" slot")
+				&& !normalized.contains("placeholder")
+				&& !normalized.equals("special attack")
+				&& !normalized.equals("empty")
+				&& !normalized.equals("n/a")
+				&& !normalized.equals("none");
 	}
 
 	private boolean containsRecommended(List<RecommendedItem> items, String name)
 	{
-		for (RecommendedItem item : items)
-		{
-			if (item.getName().equalsIgnoreCase(name))
-			{
-				return true;
-			}
-		}
-		return false;
+		return items.stream().anyMatch(item -> item.getName().equalsIgnoreCase(name));
 	}
 
 	private String htmlText(String value)
 	{
 		return value == null ? "" : value
-			.replace("&amp;", "&")
-			.replace("&#39;", "'")
-			.replace("&#039;", "'")
-			.replace("&apos;", "'")
-			.replace("&quot;", "\"")
-			.replace("&nbsp;", " ")
-			.replaceAll("\\s+", " ")
-			.trim();
+				.replace("&amp;", "&")
+				.replace("&#39;", "'")
+				.replace("&#039;", "'")
+				.replace("&apos;", "'")
+				.replace("&quot;", "\"")
+				.replace("&nbsp;", " ")
+				.replaceAll("\\s+", " ")
+				.trim();
 	}
 }

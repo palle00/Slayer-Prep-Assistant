@@ -24,6 +24,7 @@ public class TaskChatMessageParser
 		{
 			return Optional.of(SlayerTaskContext.none());
 		}
+
 		Matcher remaining = REMAINING.matcher(clean);
 		if (remaining.matches())
 		{
@@ -31,6 +32,7 @@ public class TaskChatMessageParser
 			String taskName = cleanTaskName(remaining.group(2));
 			return Optional.of(new SlayerTaskContext(taskName, amount, previousInitial(previous, taskName, amount), previousLocation(previous, taskName), true));
 		}
+
 		Matcher newTask = NEW_TASK.matcher(clean);
 		if (newTask.matches())
 		{
@@ -38,6 +40,7 @@ public class TaskChatMessageParser
 			String taskName = cleanTaskName(newTask.group(2));
 			return Optional.of(new SlayerTaskContext(taskName, amount, amount, "", true));
 		}
+
 		Matcher assigned = ASSIGNED.matcher(clean);
 		if (assigned.matches())
 		{
@@ -45,28 +48,43 @@ public class TaskChatMessageParser
 			String taskName = cleanTaskName(assigned.group(2));
 			return Optional.of(new SlayerTaskContext(taskName, amount, amount, "", true));
 		}
+
 		Matcher taskStatus = TASK_STATUS.matcher(clean);
 		if (taskStatus.matches())
 		{
 			String taskName = cleanTaskName(taskStatus.group(1));
-			return Optional.of(new SlayerTaskContext(taskName, previousRemaining(previous, taskName), previousInitial(previous, taskName, previousRemaining(previous, taskName)), previousLocation(previous, taskName), true));
+			int rem = previousRemaining(previous, taskName);
+			return Optional.of(new SlayerTaskContext(taskName, rem, previousInitial(previous, taskName, rem), previousLocation(previous, taskName), true));
 		}
+
 		return Optional.empty();
 	}
 
 	private int previousRemaining(SlayerTaskContext previous, String taskName)
 	{
-		return previous != null && previous.isActive() && previous.getTaskName().equalsIgnoreCase(taskName) ? previous.getRemainingAmount() : 0;
+		if (previous == null || !previous.isActive() || taskName == null || previous.getTaskName() == null)
+		{
+			return 0;
+		}
+		return previous.getTaskName().equalsIgnoreCase(taskName) ? previous.getRemainingAmount() : 0;
 	}
 
 	private int previousInitial(SlayerTaskContext previous, String taskName, int fallback)
 	{
-		return previous != null && previous.isActive() && previous.getTaskName().equalsIgnoreCase(taskName) ? previous.getInitialAmount() : fallback;
+		if (previous == null || !previous.isActive() || taskName == null || previous.getTaskName() == null)
+		{
+			return Math.max(0, fallback);
+		}
+		return previous.getTaskName().equalsIgnoreCase(taskName) ? previous.getInitialAmount() : Math.max(0, fallback);
 	}
 
 	private String previousLocation(SlayerTaskContext previous, String taskName)
 	{
-		return previous != null && previous.isActive() && previous.getTaskName().equalsIgnoreCase(taskName) ? previous.getAssignedLocation() : "";
+		if (previous == null || !previous.isActive() || taskName == null || previous.getTaskName() == null)
+		{
+			return "";
+		}
+		return previous.getTaskName().equalsIgnoreCase(taskName) ? (previous.getAssignedLocation() == null ? "" : previous.getAssignedLocation()) : "";
 	}
 
 	private int parseAmount(String value)
@@ -77,7 +95,7 @@ public class TaskChatMessageParser
 		}
 		try
 		{
-			return Integer.parseInt(value);
+			return Math.max(0, Integer.parseInt(value.trim()));
 		}
 		catch (NumberFormatException ex)
 		{
@@ -88,6 +106,10 @@ public class TaskChatMessageParser
 	private String cleanTaskName(String value)
 	{
 		String cleaned = value == null ? "" : value.trim();
+		if (cleaned.isEmpty())
+		{
+			return "";
+		}
 		cleaned = cleaned.replaceFirst("(?i)\\s+in\\s+.+$", "");
 		return cleaned.replaceAll("\\s+", " ");
 	}

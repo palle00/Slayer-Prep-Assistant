@@ -3,7 +3,6 @@ package com.slayerprepassistant.gear;
 public enum LoadoutMode
 {
 	BEST_I_OWN("Best I Own"),
-	BEST_VALUE("Best Value"),
 	MAX("Max");
 
 	private final String displayName;

@@ -1,5 +1,6 @@
 package com.slayerprepassistant.gear;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -11,7 +12,7 @@ public class GearRecommendation
 	public GearRecommendation(GearSlot slot, List<GearTier> tiers)
 	{
 		this.slot = slot;
-		this.tiers = Collections.unmodifiableList(tiers);
+		this.tiers = tiers == null ? Collections.emptyList() : Collections.unmodifiableList(new ArrayList<>(tiers));
 	}
 
 	public GearSlot getSlot()

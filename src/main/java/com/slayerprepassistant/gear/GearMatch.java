@@ -13,7 +13,7 @@ public class GearMatch
 	{
 		this.slot = slot;
 		this.item = item;
-		this.ownershipState = ownershipState;
+		this.ownershipState = ownershipState == null ? OwnershipState.UNKNOWN : ownershipState;
 		this.tierPriority = tierPriority;
 	}
 

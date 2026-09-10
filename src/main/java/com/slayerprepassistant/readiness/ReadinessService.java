@@ -4,6 +4,7 @@ import com.slayerprepassistant.gear.GearMatch;
 import com.slayerprepassistant.gear.LoadoutResult;
 import com.slayerprepassistant.guide.InventoryRecommendation;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 public class ReadinessService
@@ -16,32 +17,52 @@ public class ReadinessService
 		List<String> ready = new ArrayList<>();
 		List<String> unknown = new ArrayList<>();
 
-		for (GearMatch match : loadout.getGearMatches())
+		List<GearMatch> gearMatches = loadout == null || loadout.getGearMatches() == null
+				? Collections.emptyList()
+				: loadout.getGearMatches();
+
+		for (GearMatch match : gearMatches)
 		{
-			switch (match.getOwnershipState())
+			if (match == null || match.getSlot() == null || match.getItem() == null)
+			{
+				continue;
+			}
+			com.slayerprepassistant.bank.OwnershipState state = match.getOwnershipState();
+			String slotName = match.getSlot().displayName() == null ? "" : match.getSlot().displayName();
+			String itemName = match.getItem().getName() == null ? "" : match.getItem().getName();
+			String displayString = slotName + ": " + itemName;
+
+			if (state == null)
+			{
+				state = com.slayerprepassistant.bank.OwnershipState.UNKNOWN;
+			}
+
+			switch (state)
 			{
 				case EQUIPPED:
 				case OWNED_IN_INVENTORY:
 				case OWNED_IN_BANK:
-					ready.add(match.getSlot().displayName() + ": " + match.getItem().getName());
+					ready.add(displayString);
 					break;
 				case MISSING:
-					warnings.add(new ReadinessIssue("Missing gear", match.getSlot().displayName() + ": " + match.getItem().getName()));
+					warnings.add(new ReadinessIssue("Missing gear", displayString));
 					score -= 10;
 					break;
 				case UNKNOWN:
 				default:
-					unknown.add(match.getSlot().displayName() + ": " + match.getItem().getName());
+					unknown.add(displayString);
 					score -= 3;
 					break;
 			}
 		}
 
-		for (InventoryRecommendation recommendation : inventory)
+		List<InventoryRecommendation> inventoryRecs = inventory == null ? Collections.emptyList() : inventory;
+		for (InventoryRecommendation recommendation : inventoryRecs)
 		{
-			if (recommendation.isRequired())
+			if (recommendation != null && recommendation.isRequired())
 			{
-				warnings.add(new ReadinessIssue("Inventory", recommendation.getItemOrCategory()));
+				String itemOrCategory = recommendation.getItemOrCategory() == null ? "" : recommendation.getItemOrCategory();
+				warnings.add(new ReadinessIssue("Inventory", itemOrCategory));
 				score -= 7;
 			}
 		}

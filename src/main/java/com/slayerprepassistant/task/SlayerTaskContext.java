@@ -13,8 +13,8 @@ public class SlayerTaskContext
 	public SlayerTaskContext(String taskName, int remainingAmount, int initialAmount, String assignedLocation, boolean active)
 	{
 		this.taskName = taskName == null ? "" : taskName;
-		this.remainingAmount = remainingAmount;
-		this.initialAmount = initialAmount;
+		this.remainingAmount = Math.max(0, remainingAmount);
+		this.initialAmount = Math.max(0, initialAmount);
 		this.assignedLocation = assignedLocation == null ? "" : assignedLocation;
 		this.active = active;
 	}

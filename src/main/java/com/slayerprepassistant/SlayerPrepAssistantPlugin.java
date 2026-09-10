@@ -28,9 +28,11 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.OptionalInt;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
@@ -138,11 +140,11 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		wikiSetupLoader = new WikiSetupLoader(wikiClient, wikiStrategyParser, clientThread::invoke);
 		panel = new SlayerPrepAssistantPanel(this::selectTarget, this::refreshPreparation, wikiImageService::load, itemManager, itemResolver, itemLookup, createIcon(32));
 		navigationButton = NavigationButton.builder()
-			.tooltip("Slayer Prep Assistant")
-			.icon(createIcon(16))
-			.priority(6)
-			.panel(panel)
-			.build();
+				.tooltip("Slayer Prep Assistant")
+				.icon(createIcon(16))
+				.priority(6)
+				.panel(panel)
+				.build();
 		clientToolbar.addNavigation(navigationButton);
 		showThirdPartyWarningIfNeeded();
 		refreshTask();
@@ -166,7 +168,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Subscribe
 	public void onGameStateChanged(GameStateChanged event)
 	{
-		if (event.getGameState() == GameState.LOGGED_IN || event.getGameState() == GameState.LOGIN_SCREEN)
+		if (event != null && (event.getGameState() == GameState.LOGGED_IN || event.getGameState() == GameState.LOGIN_SCREEN))
 		{
 			refreshTask();
 		}
@@ -175,11 +177,11 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
 	{
-		if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)
+		if (event == null || (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM))
 		{
 			return;
 		}
-		if (slayerTaskService.applyChatMessage(event.getMessage()))
+		if (slayerTaskService.applyChatMessage(Objects.requireNonNullElse(event.getMessage(), "")))
 		{
 			refreshTask();
 		}
@@ -188,6 +190,10 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Subscribe
 	public void onItemContainerChanged(ItemContainerChanged event)
 	{
+		if (event == null)
+		{
+			return;
+		}
 		int containerId = event.getContainerId();
 		if (containerId != InventoryID.BANK && containerId != InventoryID.WORN && containerId != InventoryID.INV)
 		{
@@ -206,10 +212,15 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Subscribe
 	public void onConfigChanged(ConfigChanged event)
 	{
-		if (CONFIG_GROUP.equals(event.getGroup()) || "slayer".equals(event.getGroup()))
+		if (event == null)
+		{
+			return;
+		}
+		String group = event.getGroup();
+		if (CONFIG_GROUP.equals(group) || "slayer".equals(group))
 		{
 			lastPreparationRequestKey = "";
-			if (CONFIG_GROUP.equals(event.getGroup()))
+			if (CONFIG_GROUP.equals(group))
 			{
 				refreshPreparation();
 				return;
@@ -221,14 +232,18 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Subscribe
 	public void onVarbitChanged(VarbitChanged event)
 	{
+		if (event == null)
+		{
+			return;
+		}
 		if (event.getVarpId() == VarPlayerID.SLAYER_COUNT
-			|| event.getVarpId() == VarPlayerID.SLAYER_TARGET
-			|| event.getVarpId() == VarPlayerID.SLAYER_AREA
-			|| event.getVarpId() == VarPlayerID.SLAYER_COUNT_ORIGINAL
-			|| event.getVarbitId() == VarbitID.SLAYER_TARGET_BOSSID
-			|| event.getVarbitId() == VarbitID.SLAYER_MODIFIER_ID
-			|| event.getVarbitId() == VarbitID.SLAYER_MODIFIER_VALUE
-			|| event.getVarbitId() == VarbitID.SLAYER_MODIFIER_NEGATIVE)
+				|| event.getVarpId() == VarPlayerID.SLAYER_TARGET
+				|| event.getVarpId() == VarPlayerID.SLAYER_AREA
+				|| event.getVarpId() == VarPlayerID.SLAYER_COUNT_ORIGINAL
+				|| event.getVarbitId() == VarbitID.SLAYER_TARGET_BOSSID
+				|| event.getVarbitId() == VarbitID.SLAYER_MODIFIER_ID
+				|| event.getVarbitId() == VarbitID.SLAYER_MODIFIER_VALUE
+				|| event.getVarbitId() == VarbitID.SLAYER_MODIFIER_NEGATIVE)
 		{
 			refreshTaskOnClientThread();
 		}
@@ -242,6 +257,10 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	private void refreshTaskOnClientThread()
 	{
 		SlayerTaskContext nextTask = slayerTaskService.getCurrentTask(client);
+		if (nextTask == null)
+		{
+			nextTask = SlayerTaskContext.none();
+		}
 		String nextTaskKey = taskKey(nextTask);
 		String nextTaskDisplayKey = taskDisplayKey(nextTask);
 		boolean taskChanged = !nextTaskKey.equals(lastTaskKey);
@@ -255,9 +274,12 @@ public class SlayerPrepAssistantPlugin extends Plugin
 				selectedTarget = null;
 				lastPreparationRequestKey = "";
 				visibleSetupTargetKey = "";
-				panel.showTask(currentTask, currentTargets);
-				panel.showNoTask();
-				panel.setTaskImage(null);
+				if (panel != null)
+				{
+					panel.showTask(currentTask, currentTargets);
+					panel.showNoTask();
+					panel.setTaskImage(null);
+				}
 			}
 			lastTaskKey = nextTaskKey;
 			lastTaskDisplayKey = nextTaskDisplayKey;
@@ -265,19 +287,25 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		}
 		if (taskChanged || currentTargets.isEmpty())
 		{
-			currentTargets = targetResolver.resolve(currentTask);
+			currentTargets = Objects.requireNonNullElse(targetResolver.resolve(currentTask), new ArrayList<>());
 			if (selectedTarget == null || !currentTargets.contains(selectedTarget))
 			{
 				selectedTarget = currentTargets.isEmpty() ? null : currentTargets.get(0);
 			}
 			lastPreparationRequestKey = "";
 			visibleSetupTargetKey = "";
-			panel.showTask(currentTask, currentTargets);
+			if (panel != null)
+			{
+				panel.showTask(currentTask, currentTargets);
+			}
 			loadTaskImage(selectedTarget);
 		}
 		else if (taskDisplayChanged)
 		{
-			panel.showTask(currentTask, currentTargets);
+			if (panel != null)
+			{
+				panel.showTask(currentTask, currentTargets);
+			}
 		}
 		lastTaskKey = nextTaskKey;
 		lastTaskDisplayKey = nextTaskDisplayKey;
@@ -298,18 +326,21 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private void showThirdPartyWarningIfNeeded()
 	{
-		if (config.thirdPartyWarningAcknowledged())
+		if (config != null && config.thirdPartyWarningAcknowledged())
 		{
 			return;
 		}
 		SwingUtilities.invokeLater(() ->
 		{
 			JOptionPane.showMessageDialog(
-				null,
-				THIRD_PARTY_WARNING,
-				"Slayer Prep Assistant",
-				JOptionPane.WARNING_MESSAGE);
-			configManager.setConfiguration(CONFIG_GROUP, THIRD_PARTY_WARNING_ACKNOWLEDGED_KEY, true);
+					null,
+					THIRD_PARTY_WARNING,
+					"Slayer Prep Assistant",
+					JOptionPane.WARNING_MESSAGE);
+			if (configManager != null)
+			{
+				configManager.setConfiguration(CONFIG_GROUP, THIRD_PARTY_WARNING_ACKNOWLEDGED_KEY, true);
+			}
 		});
 	}
 
@@ -331,7 +362,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			return;
 		}
 		lastPreparationRequestKey = preparationRequestKey;
-		if (!config.useWikiStrategyData())
+		if (config == null || !config.useWikiStrategyData())
 		{
 			showPreparation(PreparationResult.noSetup(currentTask, currentTargets, selectedTarget, "No setup found."));
 			return;
@@ -341,6 +372,10 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private void showPreparation(PreparationResult result)
 	{
+		if (panel == null)
+		{
+			return;
+		}
 		if (result != null && result.getStatus() == PreparationStatus.SETUP_READY)
 		{
 			visibleSetupTargetKey = TargetOption.lookupKey(result.getSelectedTarget());
@@ -354,13 +389,13 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private boolean hasVisibleSetupFor(TargetOption target)
 	{
-		return !visibleSetupTargetKey.isEmpty() && visibleSetupTargetKey.equals(TargetOption.lookupKey(target));
+		return target != null && !visibleSetupTargetKey.isEmpty() && visibleSetupTargetKey.equals(TargetOption.lookupKey(target));
 	}
 
 	@Subscribe
 	public void onMenuEntryAdded(MenuEntryAdded event)
 	{
-		if (event.getMenuEntry().getType() != MenuAction.EXAMINE_NPC)
+		if (event == null || event.getMenuEntry() == null || event.getMenuEntry().getType() != MenuAction.EXAMINE_NPC)
 		{
 			return;
 		}
@@ -369,18 +404,29 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		{
 			return;
 		}
-		client.getMenu().createMenuEntry(-1)
-			.setOption(SLAYER_GUIDE_MENU_OPTION)
-			.setTarget(event.getTarget())
-			.setType(MenuAction.RUNELITE)
-			.onClick(menuEntry -> openSlayerGuide(npc));
+		if (client != null && client.getMenu() != null)
+		{
+			client.getMenu().createMenuEntry(-1)
+					.setOption(SLAYER_GUIDE_MENU_OPTION)
+					.setTarget(Objects.requireNonNullElse(event.getTarget(), ""))
+					.setType(MenuAction.RUNELITE)
+					.onClick(menuEntry -> openSlayerGuide(npc));
+		}
 	}
 
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
+		if (event == null)
+		{
+			return;
+		}
 		if ((event.getMenuAction() != MenuAction.CC_OP && event.getMenuAction() != MenuAction.CC_OP_LOW_PRIORITY)
-			|| !"Check".equals(event.getMenuOption()))
+				|| !"Check".equals(event.getMenuOption()))
+		{
+			return;
+		}
+		if (client == null)
 		{
 			return;
 		}
@@ -398,11 +444,15 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			}
 		}
 		int itemId = widget.getItemId();
-		for (Widget child : widget.getDynamicChildren())
+		Widget[] dynamicChildren = widget.getDynamicChildren();
+		if (dynamicChildren != null)
 		{
-			if (itemId == -1)
+			for (Widget child : dynamicChildren)
 			{
-				itemId = child.getItemId();
+				if (child != null && itemId == -1)
+				{
+					itemId = child.getItemId();
+				}
 			}
 		}
 		itemId = ItemVariationMapping.map(itemId);
@@ -435,52 +485,69 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		String name = composition == null ? npc.getName() : composition.getName();
 		TargetOption target = enemyTarget(name);
 		currentTask = new SlayerTaskContext(target.getDisplayName(), 0, 0, "Clicked enemy", true);
-		currentTargets = new ArrayList<>(java.util.Collections.singletonList(target));
+		currentTargets = new ArrayList<>(Collections.singletonList(target));
 		selectedTarget = target;
 		lastTaskKey = taskKey(currentTask);
 		lastTaskDisplayKey = taskDisplayKey(currentTask);
 		lastPreparationRequestKey = "";
 		visibleSetupTargetKey = "";
-		SwingUtilities.invokeLater(() -> clientToolbar.openPanel(navigationButton));
+		SwingUtilities.invokeLater(() -> {
+			if (clientToolbar != null && navigationButton != null)
+			{
+				clientToolbar.openPanel(navigationButton);
+			}
+		});
 		updatePlayerStateOnClientThread();
-		panel.showTask(currentTask, currentTargets);
+		if (panel != null)
+		{
+			panel.showTask(currentTask, currentTargets);
+		}
 		loadTaskImage(selectedTarget);
 		refreshPreparation();
 	}
 
 	private TargetOption enemyTarget(String npcName)
 	{
-		String title = WikiTitles.wikiTitle(npcName);
+		String safeName = Objects.requireNonNullElse(npcName, "");
+		String title = WikiTitles.wikiTitle(safeName);
 		return new TargetOption(title, title, "Strategies/" + title);
 	}
 
 	private void loadWikiStrategy(TargetOption target, CombatMethod method, LoadoutMode mode)
 	{
+		if (target == null || wikiSetupLoader == null)
+		{
+			return;
+		}
 		int requestId = ++wikiRequestId;
-		if (!hasVisibleSetupFor(target))
+		if (!hasVisibleSetupFor(target) && panel != null)
 		{
 			panel.showLoading(currentTask, currentTargets, target);
 		}
 		wikiSetupLoader.loadStrategy(
-			requestId,
-			target,
-			strategyPageCandidates(target),
-			this::isStaleWikiRequest,
-			(parsed, finalCandidate) -> handleStrategyParse(requestId, target, method, mode, parsed, finalCandidate),
-			() -> loadWikiVariants(requestId, target));
+				requestId,
+				target,
+				strategyPageCandidates(target),
+				this::isStaleWikiRequest,
+				(parsed, finalCandidate) -> handleStrategyParse(requestId, target, method, mode, parsed, finalCandidate),
+				() -> loadWikiVariants(requestId, target));
 	}
 
 	private boolean handleStrategyParse(int requestId, TargetOption target, CombatMethod method, LoadoutMode mode, WikiParsingResult parsed, boolean finalCandidate)
 	{
-		if (requestId != wikiRequestId || !target.equals(selectedTarget))
+		if (target == null || requestId != wikiRequestId || !target.equals(selectedTarget) || parsed == null || preparationEngine == null)
 		{
 			return true;
 		}
 		MonsterGuide guide = parsed.getGuide();
-		PreparationResult wikiResult = preparationEngine.prepareGuide(currentTask, currentTargets, target, guide, method, mode, playerStateTracker.getState());
-		if (wikiResult.getStatus() == PreparationStatus.SETUP_READY)
+		if (guide == null)
 		{
-			preferredStrategyPageByTarget.put(TargetOption.lookupKey(target), parsed.getGuide().getWikiTitle());
+			return false;
+		}
+		PreparationResult wikiResult = preparationEngine.prepareGuide(currentTask, currentTargets, target, guide, method, mode, playerStateTracker.getState());
+		if (wikiResult != null && wikiResult.getStatus() == PreparationStatus.SETUP_READY)
+		{
+			preferredStrategyPageByTarget.put(TargetOption.lookupKey(target), guide.getWikiTitle());
 			showPreparation(wikiResult);
 			return true;
 		}
@@ -489,29 +556,35 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private void loadWikiVariants(int requestId, TargetOption target)
 	{
+		if (target == null || wikiSetupLoader == null)
+		{
+			return;
+		}
 		wikiSetupLoader.loadVariantPage(
-			requestId,
-			target,
-			WikiPageCandidates.variantPages(target),
-			this::isStaleWikiRequest,
-			parsed -> handleVariantsParse(requestId, target, parsed),
-			() -> showPreparation(PreparationResult.noSetup(currentTask, currentTargets, target, "A usable strategy setup could not be found for this monster.")));
+				requestId,
+				target,
+				WikiPageCandidates.variantPages(target),
+				this::isStaleWikiRequest,
+				parsed -> handleVariantsParse(requestId, target, parsed),
+				() -> showPreparation(PreparationResult.noSetup(currentTask, currentTargets, target, "A usable strategy setup could not be found for this monster.")));
 	}
 
 	private boolean handleVariantsParse(int requestId, TargetOption target, WikiParsingResult parsed)
 	{
-		if (requestId != wikiRequestId || !target.equals(selectedTarget))
+		if (target == null || requestId != wikiRequestId || !target.equals(selectedTarget) || parsed == null || parsed.getVariants() == null)
 		{
 			return true;
 		}
 		List<TargetOption> variants = parsed.getVariants().stream()
-			.map(variant -> variant.toTargetOption())
-			.collect(Collectors.toList());
+				.filter(Objects::nonNull)
+				.map(variant -> variant.toTargetOption())
+				.filter(Objects::nonNull)
+				.collect(Collectors.toList());
 		if (variants.isEmpty())
 		{
 			return false;
 		}
-		if (!hasVisibleSetupFor(target))
+		if (!hasVisibleSetupFor(target) && panel != null)
 		{
 			panel.showLoading(currentTask, currentTargets, target);
 		}
@@ -521,7 +594,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private void filterWikiVariants(int requestId, TargetOption originalTarget, List<TargetOption> variants, List<TargetOption> variantsWithSetup, int index)
 	{
-		if (requestId != wikiRequestId || !originalTarget.equals(selectedTarget))
+		if (originalTarget == null || requestId != wikiRequestId || !originalTarget.equals(selectedTarget) || variants == null || variantsWithSetup == null)
 		{
 			return;
 		}
@@ -543,7 +616,11 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private void showFilteredVariants(TargetOption originalTarget, List<TargetOption> variantsWithSetup)
 	{
-		if (variantsWithSetup.isEmpty())
+		if (originalTarget == null || panel == null)
+		{
+			return;
+		}
+		if (variantsWithSetup == null || variantsWithSetup.isEmpty())
 		{
 			showPreparation(PreparationResult.noSetup(currentTask, currentTargets, originalTarget, "A usable strategy setup could not be found for any monster variant."));
 			return;
@@ -556,16 +633,21 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private void checkVariantSetup(int requestId, TargetOption originalTarget, TargetOption variant, List<String> candidates, int index, Consumer<Boolean> resultConsumer)
 	{
-		if (requestId != wikiRequestId || !originalTarget.equals(selectedTarget))
+		if (originalTarget == null || requestId != wikiRequestId || !originalTarget.equals(selectedTarget) || resultConsumer == null)
 		{
 			return;
 		}
-		if (index >= candidates.size())
+		if (candidates == null || index >= candidates.size())
 		{
 			resultConsumer.accept(false);
 			return;
 		}
 		String strategyTitle = candidates.get(index);
+		if (wikiSetupLoader == null)
+		{
+			resultConsumer.accept(false);
+			return;
+		}
 		wikiSetupLoader.loadStrategyCandidate(requestId, originalTarget, variant, strategyTitle, this::isStaleWikiRequest, parsed ->
 		{
 			if (hasUsableSetup(variant, parsed))
@@ -579,33 +661,33 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private boolean isStaleWikiRequest(int requestId, TargetOption target)
 	{
-		return requestId != wikiRequestId || !target.equals(selectedTarget);
+		return requestId != wikiRequestId || !Objects.equals(target, selectedTarget);
 	}
 
 	private boolean hasUsableSetup(TargetOption target, WikiParsingResult parsed)
 	{
-		if (parsed == null)
+		if (target == null || parsed == null || parsed.getGuide() == null || preparationEngine == null)
 		{
 			return false;
 		}
 		PreparationResult result = preparationEngine.prepareGuide(currentTask, currentTargets, target, parsed.getGuide(), CombatMethod.defaultMethod(), LoadoutMode.BEST_I_OWN, playerStateTracker.getState());
-		return result.getStatus() == PreparationStatus.SETUP_READY;
+		return result != null && result.getStatus() == PreparationStatus.SETUP_READY;
 	}
 
 	private boolean updatePlayerStateOnClientThread()
 	{
-		return playerStateTracker.update(client);
+		return playerStateTracker != null && playerStateTracker.update(client);
 	}
 
 	private String preparationRequestKey(CombatMethod method, LoadoutMode mode)
 	{
 		return taskKey(currentTask)
-			+ "|" + TargetOption.lookupKey(selectedTarget)
-			+ "|" + method
-			+ "|" + mode
-			+ "|wiki=" + config.useWikiStrategyData()
-			+ "|price=" + config.useWikiPriceData()
-			+ "|" + playerStateTracker.getStateKey();
+				+ "|" + TargetOption.lookupKey(selectedTarget)
+				+ "|" + method
+				+ "|" + mode
+				+ "|wiki=" + (config != null && config.useWikiStrategyData())
+				+ "|price=" + (config != null && config.useWikiPriceData())
+				+ "|" + (playerStateTracker != null ? playerStateTracker.getStateKey() : "");
 	}
 
 	private String taskKey(SlayerTaskContext task)
@@ -615,7 +697,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			return "";
 		}
 		return task.isActive()
-			+ "|" + task.getTaskName();
+				+ "|" + Objects.requireNonNullElse(task.getTaskName(), "");
 	}
 
 	private String taskDisplayKey(SlayerTaskContext task)
@@ -625,15 +707,15 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			return "";
 		}
 		return task.isActive()
-			+ "|" + task.getTaskName()
-			+ "|" + task.getRemainingAmount()
-			+ "|" + task.getInitialAmount()
-			+ "|" + task.getAssignedLocation();
+				+ "|" + Objects.requireNonNullElse(task.getTaskName(), "")
+				+ "|" + task.getRemainingAmount()
+				+ "|" + task.getInitialAmount()
+				+ "|" + Objects.requireNonNullElse(task.getAssignedLocation(), "");
 	}
 
 	private OptionalInt priceFor(RecommendedItem item)
 	{
-		if (!config.useWikiPriceData() || item == null || item.getName().trim().isEmpty())
+		if (config == null || !config.useWikiPriceData() || item == null || item.getName() == null || item.getName().trim().isEmpty() || itemLookup == null)
 		{
 			return OptionalInt.empty();
 		}
@@ -642,24 +724,41 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private List<String> strategyPageCandidates(TargetOption target)
 	{
+		if (target == null)
+		{
+			return Collections.emptyList();
+		}
 		return WikiPageCandidates.strategyPages(target, preferredStrategyPageByTarget.get(TargetOption.lookupKey(target)));
 	}
 
 	private void loadTaskImage(TargetOption target)
 	{
-		if (target == null || !config.useWikiStrategyData())
+		if (target == null || config == null || !config.useWikiStrategyData() || panel == null || wikiImageService == null)
+		{
+			if (panel != null)
+			{
+				panel.setTaskImage(null);
+			}
+			return;
+		}
+		String title = target.getWikiPage();
+		if (title == null || title.trim().isEmpty())
 		{
 			panel.setTaskImage(null);
 			return;
 		}
-		String title = target.getWikiPage();
-		wikiImageService.load(title, 48, image -> clientThread.invoke(() ->
-		{
-			if (target.equals(selectedTarget))
+		wikiImageService.load(title, 48, image -> {
+			if (clientThread != null)
 			{
-				panel.setTaskImage(image);
+				clientThread.invoke(() ->
+				{
+					if (target.equals(selectedTarget) && panel != null)
+					{
+						panel.setTaskImage(image);
+					}
+				});
 			}
-		}));
+		});
 	}
 
 	private BufferedImage createIcon(int size)
@@ -668,7 +767,11 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		{
 			if (stream != null)
 			{
-				return ImageUtil.resizeImage(ImageIO.read(stream), size, size);
+				BufferedImage img = ImageIO.read(stream);
+				if (img != null)
+				{
+					return ImageUtil.resizeImage(img, size, size);
+				}
 			}
 		}
 		catch (IOException ex)
@@ -681,6 +784,6 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Provides
 	SlayerPrepAssistantConfig provideConfig(ConfigManager configManager)
 	{
-		return configManager.getConfig(SlayerPrepAssistantConfig.class);
+		return configManager != null ? configManager.getConfig(SlayerPrepAssistantConfig.class) : null;
 	}
 }

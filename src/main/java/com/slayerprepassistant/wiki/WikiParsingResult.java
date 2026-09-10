@@ -1,6 +1,7 @@
 package com.slayerprepassistant.wiki;
 
 import com.slayerprepassistant.guide.MonsterGuide;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
@@ -10,16 +11,11 @@ public class WikiParsingResult
 	private final List<MonsterVariant> variants;
 	private final List<String> warnings;
 
-	public WikiParsingResult(MonsterGuide guide, List<String> warnings)
-	{
-		this(guide, Collections.emptyList(), warnings);
-	}
-
 	public WikiParsingResult(MonsterGuide guide, List<MonsterVariant> variants, List<String> warnings)
 	{
 		this.guide = guide;
-		this.variants = Collections.unmodifiableList(variants);
-		this.warnings = Collections.unmodifiableList(warnings);
+		this.variants = Collections.unmodifiableList(variants == null ? Collections.emptyList() : new ArrayList<>(variants));
+		this.warnings = Collections.unmodifiableList(warnings == null ? Collections.emptyList() : new ArrayList<>(warnings));
 	}
 
 	public MonsterGuide getGuide()

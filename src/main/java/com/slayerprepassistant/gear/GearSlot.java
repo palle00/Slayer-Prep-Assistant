@@ -18,7 +18,7 @@ public enum GearSlot
 
 	public String displayName()
 	{
-		String lower = name().toLowerCase(Locale.ROOT);
-		return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
+		String name = name();
+		return name.charAt(0) + name.substring(1).toLowerCase(Locale.ROOT);
 	}
 }

@@ -1,21 +1,33 @@
 package com.slayerprepassistant.wiki;
 
 import com.slayerprepassistant.task.TargetOption;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
+import java.util.Set;
 
 public class WikiSetupLoader
 {
+	private static final int PARSED_CACHE_SIZE = 128;
+
 	private final WikiClient wikiClient;
 	private final WikiStrategyParser wikiStrategyParser;
-	private final Consumer<Runnable> clientThreadInvoker;
-	private final Map<String, WikiParsingResult> wikiResultCache = new ConcurrentHashMap<>();
+	private final java.util.function.Consumer<Runnable> clientThreadInvoker;
+	private final Map<String, WikiParsingResult> wikiResultCache = Collections.synchronizedMap(
+		new LinkedHashMap<String, WikiParsingResult>(16, 0.75f, true)
+		{
+			@Override
+			protected boolean removeEldestEntry(Map.Entry<String, WikiParsingResult> eldest)
+			{
+				return size() > PARSED_CACHE_SIZE;
+			}
+		});
 
-	public WikiSetupLoader(WikiClient wikiClient, WikiStrategyParser wikiStrategyParser, Consumer<Runnable> clientThreadInvoker)
+	public WikiSetupLoader(WikiClient wikiClient, WikiStrategyParser wikiStrategyParser, java.util.function.Consumer<Runnable> clientThreadInvoker)
 	{
 		this.wikiClient = Objects.requireNonNull(wikiClient, "wikiClient cannot be null");
 		this.wikiStrategyParser = Objects.requireNonNull(wikiStrategyParser, "wikiStrategyParser cannot be null");
@@ -24,170 +36,264 @@ public class WikiSetupLoader
 
 	public void loadStrategy(int requestId, TargetOption target, List<String> candidates, StaleCheck staleCheck, StrategyHandler handler, Runnable exhausted)
 	{
-		loadStrategy(requestId, target, safeCandidates(candidates), 0, staleCheck, handler, safeRunnable(exhausted));
+		loadStrategy(requestId, target, target, candidates, staleCheck, handler, exhausted);
+	}
+
+	/**
+	 * Loads the first usable strategy for {@code parseTarget} while staleness is checked against
+	 * {@code staleTarget}. Candidate revision texts are fetched in a single MediaWiki batch request.
+	 */
+	public void loadStrategy(
+		int requestId,
+		TargetOption staleTarget,
+		TargetOption parseTarget,
+		List<String> candidates,
+		StaleCheck staleCheck,
+		StrategyHandler handler,
+		Runnable exhausted)
+	{
+		List<String> safeCandidates = safeCandidates(candidates);
+		Runnable safeExhausted = safeRunnable(exhausted);
+		if (safeCandidates.isEmpty())
+		{
+			safeExhausted.run();
+			return;
+		}
+		if (isStale(staleCheck, requestId, staleTarget))
+		{
+			return;
+		}
+
+		Map<String, WikiParsingResult> cached = cachedResults(safeCandidates);
+		if (cached.size() == safeCandidates.size())
+		{
+			continueStrategy(requestId, staleTarget, safeCandidates, cached, 0, staleCheck, handler, safeExhausted);
+			return;
+		}
+
+		List<String> uncached = new ArrayList<>();
+		for (String title : safeCandidates)
+		{
+			if (!cached.containsKey(WikiTitles.cacheKey(title)))
+			{
+				uncached.add(title);
+			}
+		}
+
+		wikiClient.fetchRevisionTexts(uncached, responses -> wikiClient.executeAsync(() ->
+		{
+			Map<String, WikiParsingResult> parsed = new LinkedHashMap<>(cached);
+			for (String title : uncached)
+			{
+				WikiResponse response = responses.get(WikiTitles.cacheKey(title));
+				if (isReady(response))
+				{
+					parsed.put(WikiTitles.cacheKey(title), parse(parseTarget, response));
+				}
+			}
+			clientThreadInvoker.accept(() ->
+			{
+				if (!isStale(staleCheck, requestId, staleTarget))
+				{
+					continueStrategy(requestId, staleTarget, safeCandidates, parsed, 0, staleCheck, handler, safeExhausted);
+				}
+			});
+		}));
 	}
 
 	public void loadVariantPage(int requestId, TargetOption target, List<String> candidates, StaleCheck staleCheck, VariantHandler handler, Runnable exhausted)
 	{
-		loadVariantPage(requestId, target, safeCandidates(candidates), 0, staleCheck, handler, safeRunnable(exhausted));
-	}
-
-	public void loadStrategyCandidate(int requestId, TargetOption staleTarget, TargetOption parseTarget, String strategyTitle, StaleCheck staleCheck, Consumer<WikiParsingResult> callback)
-	{
-		if (strategyTitle == null || strategyTitle.trim().isEmpty() || callback == null)
+		List<String> safeCandidates = safeCandidates(candidates);
+		Runnable safeExhausted = safeRunnable(exhausted);
+		if (safeCandidates.isEmpty())
 		{
-			if (callback != null)
-			{
-				callback.accept(null);
-			}
+			safeExhausted.run();
+			return;
+		}
+		if (isStale(staleCheck, requestId, target))
+		{
 			return;
 		}
 
-		String titleKey = strategyTitle.trim();
-		WikiParsingResult cached = wikiResultCache.get(titleKey);
+		Map<String, WikiParsingResult> cached = cachedResults(safeCandidates);
+		if (cached.size() == safeCandidates.size())
+		{
+			continueVariantPage(requestId, target, safeCandidates, cached, 0, staleCheck, handler, safeExhausted);
+			return;
+		}
+
+		List<String> uncached = new ArrayList<>();
+		for (String title : safeCandidates)
+		{
+			if (!cached.containsKey(WikiTitles.cacheKey(title)))
+			{
+				uncached.add(title);
+			}
+		}
+		wikiClient.fetchRevisionTexts(uncached, responses -> wikiClient.executeAsync(() ->
+		{
+			Map<String, WikiParsingResult> parsed = new LinkedHashMap<>(cached);
+			for (String title : uncached)
+			{
+				WikiResponse response = responses.get(WikiTitles.cacheKey(title));
+				if (isReady(response))
+				{
+					WikiParsingResult result = parse(target, response);
+					parsed.put(WikiTitles.cacheKey(title), result);
+					cache(title, result);
+				}
+			}
+			clientThreadInvoker.accept(() ->
+			{
+				if (!isStale(staleCheck, requestId, target))
+				{
+					continueVariantPage(requestId, target, safeCandidates, parsed, 0, staleCheck, handler, safeExhausted);
+				}
+			});
+		}));
+	}
+
+	private void continueStrategy(
+		int requestId,
+		TargetOption staleTarget,
+		List<String> candidates,
+		Map<String, WikiParsingResult> parsedByTitle,
+		int index,
+		StaleCheck staleCheck,
+		StrategyHandler handler,
+		Runnable exhausted)
+	{
+		if (isStale(staleCheck, requestId, staleTarget))
+		{
+			return;
+		}
+		if (index >= candidates.size())
+		{
+			exhausted.run();
+			return;
+		}
+
+		String title = candidates.get(index);
+		String key = WikiTitles.cacheKey(title);
+		WikiParsingResult cached = cachedResult(key);
 		if (cached != null)
 		{
-			if (staleCheck != null && staleCheck.isStale(requestId, staleTarget))
+			handleStrategyResult(requestId, staleTarget, candidates, parsedByTitle, index, staleCheck, handler, exhausted, cached);
+			return;
+		}
+
+		WikiParsingResult parsed = parsedByTitle.get(key);
+		if (parsed == null || parsed.getGuide() == null)
+		{
+			continueStrategy(requestId, staleTarget, candidates, parsedByTitle, index + 1, staleCheck, handler, exhausted);
+			return;
+		}
+
+		String renderedTitle = parsed.getGuide().getWikiTitle();
+		wikiClient.fetchRenderedHtml(renderedTitle, htmlResponse -> wikiClient.executeAsync(() ->
+		{
+			WikiParsingResult enriched = isReady(htmlResponse)
+				? wikiStrategyParser.mergeRenderedHtml(parsed, htmlResponse.getRevision().getText())
+				: parsed;
+			cache(title, enriched);
+			clientThreadInvoker.accept(() ->
+			{
+				if (!isStale(staleCheck, requestId, staleTarget))
+				{
+					handleStrategyResult(requestId, staleTarget, candidates, parsedByTitle, index, staleCheck, handler, exhausted, enriched);
+				}
+			});
+		}));
+	}
+
+	private void handleStrategyResult(
+		int requestId,
+		TargetOption staleTarget,
+		List<String> candidates,
+		Map<String, WikiParsingResult> parsedByTitle,
+		int index,
+		StaleCheck staleCheck,
+		StrategyHandler handler,
+		Runnable exhausted,
+		WikiParsingResult result)
+	{
+		boolean finalCandidate = index == candidates.size() - 1;
+		boolean handled = handler != null && handler.handle(result, finalCandidate);
+		if (!handled)
+		{
+			continueStrategy(requestId, staleTarget, candidates, parsedByTitle, index + 1, staleCheck, handler, exhausted);
+		}
+	}
+
+	private void continueVariantPage(
+		int requestId,
+		TargetOption target,
+		List<String> candidates,
+		Map<String, WikiParsingResult> parsedByTitle,
+		int index,
+		StaleCheck staleCheck,
+		VariantHandler handler,
+		Runnable exhausted)
+	{
+		if (isStale(staleCheck, requestId, target))
+		{
+			return;
+		}
+		if (index >= candidates.size())
+		{
+			exhausted.run();
+			return;
+		}
+
+		String title = candidates.get(index);
+		WikiParsingResult parsed = parsedByTitle.get(WikiTitles.cacheKey(title));
+		if (parsed != null)
+		{
+			boolean handled = handler != null && handler.handle(parsed);
+			if (handled)
 			{
 				return;
 			}
-			callback.accept(cached);
-			return;
 		}
-
-		wikiClient.fetchRevisionText(titleKey, response ->
-				clientThreadInvoker.accept(() -> handleStrategyCandidateResponse(requestId, staleTarget, parseTarget, titleKey, staleCheck, callback, response))
-		);
+		continueVariantPage(requestId, target, candidates, parsedByTitle, index + 1, staleCheck, handler, exhausted);
 	}
 
-	private void loadStrategy(int requestId, TargetOption target, List<String> candidates, int index, StaleCheck staleCheck, StrategyHandler handler, Runnable exhausted)
+	private Map<String, WikiParsingResult> cachedResults(List<String> candidates)
 	{
-		if (index >= candidates.size())
+		Map<String, WikiParsingResult> result = new LinkedHashMap<>();
+		synchronized (wikiResultCache)
 		{
-			exhausted.run();
-			return;
-		}
-		String strategyTitle = candidates.get(index);
-		WikiParsingResult cached = wikiResultCache.get(strategyTitle);
-		if (cached != null)
-		{
-			boolean handled = handler != null && handler.handle(cached, index == candidates.size() - 1);
-			if (!handled)
+			for (String title : candidates)
 			{
-				loadStrategy(requestId, target, candidates, index + 1, staleCheck, handler, exhausted);
+				String key = WikiTitles.cacheKey(title);
+				WikiParsingResult cached = wikiResultCache.get(key);
+				if (cached != null)
+				{
+					result.put(key, cached);
+				}
 			}
-			return;
 		}
-		wikiClient.fetchRevisionText(strategyTitle, response ->
-				clientThreadInvoker.accept(() -> handleStrategyResponse(requestId, target, candidates, index, staleCheck, handler, exhausted, response))
-		);
+		return result;
 	}
 
-	private void handleStrategyResponse(int requestId, TargetOption target, List<String> candidates, int index, StaleCheck staleCheck, StrategyHandler handler, Runnable exhausted, WikiResponse response)
+	private WikiParsingResult cachedResult(String key)
 	{
-		if (staleCheck != null && staleCheck.isStale(requestId, target))
+		synchronized (wikiResultCache)
 		{
-			return;
-		}
-		if (response == null || response.getState() != WikiState.READY || response.getRevision() == null)
-		{
-			loadStrategy(requestId, target, candidates, index + 1, staleCheck, handler, exhausted);
-			return;
-		}
-		WikiParsingResult parsed = parse(target, response);
-		wikiClient.fetchRenderedHtml(response.getRevision().getTitle(), htmlResponse ->
-				clientThreadInvoker.accept(() -> handleRenderedStrategyResponse(requestId, target, candidates, index, staleCheck, handler, exhausted, parsed, htmlResponse))
-		);
-	}
-
-	private void handleRenderedStrategyResponse(int requestId, TargetOption target, List<String> candidates, int index, StaleCheck staleCheck, StrategyHandler handler, Runnable exhausted, WikiParsingResult parsed, WikiResponse htmlResponse)
-	{
-		if (staleCheck != null && staleCheck.isStale(requestId, target))
-		{
-			return;
-		}
-		WikiParsingResult enriched = (htmlResponse != null && htmlResponse.getState() == WikiState.READY && htmlResponse.getRevision() != null)
-				? wikiStrategyParser.mergeRenderedHtml(parsed, htmlResponse.getRevision().getText())
-				: parsed;
-		wikiResultCache.put(candidates.get(index), enriched);
-		boolean handled = handler != null && handler.handle(enriched, index == candidates.size() - 1);
-		if (!handled)
-		{
-			loadStrategy(requestId, target, candidates, index + 1, staleCheck, handler, exhausted);
+			return wikiResultCache.get(key);
 		}
 	}
 
-	private void loadVariantPage(int requestId, TargetOption target, List<String> candidates, int index, StaleCheck staleCheck, VariantHandler handler, Runnable exhausted)
+	private void cache(String title, WikiParsingResult result)
 	{
-		if (index >= candidates.size())
-		{
-			exhausted.run();
-			return;
-		}
-		String pageTitle = candidates.get(index);
-		WikiParsingResult cached = wikiResultCache.get(pageTitle);
-		if (cached != null)
-		{
-			boolean handled = handler != null && handler.handle(cached);
-			if (!handled)
-			{
-				loadVariantPage(requestId, target, candidates, index + 1, staleCheck, handler, exhausted);
-			}
-			return;
-		}
-		wikiClient.fetchRevisionText(pageTitle, response ->
-				clientThreadInvoker.accept(() -> handleVariantPageResponse(requestId, target, candidates, index, staleCheck, handler, exhausted, response))
-		);
-	}
-
-	private void handleVariantPageResponse(int requestId, TargetOption target, List<String> candidates, int index, StaleCheck staleCheck, VariantHandler handler, Runnable exhausted, WikiResponse response)
-	{
-		if (staleCheck != null && staleCheck.isStale(requestId, target))
+		if (result == null)
 		{
 			return;
 		}
-		if (response == null || response.getState() != WikiState.READY || response.getRevision() == null)
+		synchronized (wikiResultCache)
 		{
-			loadVariantPage(requestId, target, candidates, index + 1, staleCheck, handler, exhausted);
-			return;
+			wikiResultCache.put(WikiTitles.cacheKey(title), result);
 		}
-		WikiParsingResult parsed = parse(target, response);
-		wikiResultCache.put(candidates.get(index), parsed);
-		boolean handled = handler != null && handler.handle(parsed);
-		if (!handled)
-		{
-			loadVariantPage(requestId, target, candidates, index + 1, staleCheck, handler, exhausted);
-		}
-	}
-
-	private void handleStrategyCandidateResponse(int requestId, TargetOption staleTarget, TargetOption parseTarget, String strategyTitle, StaleCheck staleCheck, Consumer<WikiParsingResult> callback, WikiResponse response)
-	{
-		if (staleCheck != null && staleCheck.isStale(requestId, staleTarget))
-		{
-			return;
-		}
-		if (response == null || response.getState() != WikiState.READY || response.getRevision() == null)
-		{
-			callback.accept(null);
-			return;
-		}
-		WikiParsingResult parsed = parse(parseTarget, response);
-		wikiClient.fetchRenderedHtml(response.getRevision().getTitle(), htmlResponse ->
-				clientThreadInvoker.accept(() -> handleRenderedStrategyCandidateResponse(requestId, staleTarget, strategyTitle, staleCheck, callback, parsed, htmlResponse))
-		);
-	}
-
-	private void handleRenderedStrategyCandidateResponse(int requestId, TargetOption target, String strategyTitle, StaleCheck staleCheck, Consumer<WikiParsingResult> callback, WikiParsingResult parsed, WikiResponse htmlResponse)
-	{
-		if (staleCheck != null && staleCheck.isStale(requestId, target))
-		{
-			return;
-		}
-		WikiParsingResult enriched = (htmlResponse != null && htmlResponse.getState() == WikiState.READY && htmlResponse.getRevision() != null)
-				? wikiStrategyParser.mergeRenderedHtml(parsed, htmlResponse.getRevision().getText())
-				: parsed;
-		wikiResultCache.put(strategyTitle, enriched);
-		callback.accept(enriched);
 	}
 
 	private WikiParsingResult parse(TargetOption target, WikiResponse response)
@@ -195,21 +301,49 @@ public class WikiSetupLoader
 		String name = target != null ? target.getDisplayName() : "";
 		String title = response.getRevision().getTitle();
 		return wikiStrategyParser.parse(
-				name,
-				title,
-				WikiTitles.pageUrl(title),
-				response.getRevision().getRevisionId(),
-				response.getRevision().getText());
+			name,
+			title,
+			WikiTitles.pageUrl(title),
+			response.getRevision().getRevisionId(),
+			response.getRevision().getText());
+	}
+
+	private boolean isReady(WikiResponse response)
+	{
+		return response != null && response.getState() == WikiState.READY && response.getRevision() != null;
+	}
+
+	private boolean isStale(StaleCheck staleCheck, int requestId, TargetOption target)
+	{
+		return staleCheck != null && staleCheck.isStale(requestId, target);
 	}
 
 	private List<String> safeCandidates(List<String> candidates)
 	{
-		return candidates == null ? Collections.emptyList() : candidates;
+		if (candidates == null || candidates.isEmpty())
+		{
+			return Collections.emptyList();
+		}
+		List<String> result = new ArrayList<>();
+		Set<String> seen = new LinkedHashSet<>();
+		for (String candidate : candidates)
+		{
+			if (candidate == null || candidate.trim().isEmpty())
+			{
+				continue;
+			}
+			String cleaned = candidate.trim();
+			if (seen.add(WikiTitles.cacheKey(cleaned)))
+			{
+				result.add(cleaned);
+			}
+		}
+		return Collections.unmodifiableList(result);
 	}
 
 	private Runnable safeRunnable(Runnable runnable)
 	{
-		return runnable != null ? runnable : () -> {};
+		return runnable != null ? runnable : () -> { };
 	}
 
 	public interface StaleCheck

@@ -26,11 +26,17 @@ public final class WikiPageCandidates
 		if (wikiPage != null && !wikiPage.trim().isEmpty())
 		{
 			String singular = WikiTitles.singularTitle(wikiPage);
+
+			// Check standard strategy pages first
 			add(candidates, target.getStrategyPage());
 			add(candidates, "Strategies/" + wikiPage);
 			add(candidates, wikiPage + "/Strategies");
 			add(candidates, "Strategies/" + singular);
 			add(candidates, singular + "/Strategies");
+
+			// Fall back to Slayer_task pages if primary strategies return nothing
+			add(candidates, "Slayer_task/" + wikiPage);
+			add(candidates, "Slayer_task/" + singular);
 		}
 
 		return new ArrayList<>(candidates);

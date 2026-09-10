@@ -14,7 +14,7 @@ public class WikiPageCandidatesTest
 		TargetOption target = new TargetOption("Aberrant spectres", "Aberrant spectres", "Strategies/Aberrant spectres");
 
 		assertEquals(
-			Arrays.asList("Aberrant spectres/Strategies", "Strategies/Aberrant spectres", "Strategies/Aberrant spectre", "Aberrant spectre/Strategies"),
+			Arrays.asList("Aberrant spectres/Strategies", "Strategies/Aberrant spectres", "Strategies/Aberrant spectre", "Aberrant spectre/Strategies", "Slayer_task/Aberrant spectres", "Slayer_task/Aberrant spectre"),
 			WikiPageCandidates.strategyPages(target, "Aberrant spectres/Strategies"));
 	}
 

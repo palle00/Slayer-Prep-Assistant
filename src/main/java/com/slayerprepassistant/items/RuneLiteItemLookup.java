@@ -1,11 +1,10 @@
 package com.slayerprepassistant.items;
 
 import com.slayerprepassistant.gear.RecommendedItem;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
-import java.util.OptionalInt;
 import java.util.Set;
 import net.runelite.client.game.ItemManager;
 import net.runelite.http.api.item.ItemPrice;
@@ -13,105 +12,81 @@ import net.runelite.http.api.item.ItemPrice;
 public class RuneLiteItemLookup
 {
 	private final ItemManager itemManager;
-	private final Map<String, Integer> itemIdCache = Collections.synchronizedMap(new HashMap<>());
-	private final Map<String, OptionalInt> priceCache = Collections.synchronizedMap(new HashMap<>());
-	private final Map<String, ItemPrice> searchCache = Collections.synchronizedMap(new HashMap<>());
-	private final Set<String> searchMisses = Collections.synchronizedSet(new HashSet<>());
+	private final Map<String, Integer> itemIdCache = new HashMap<>();
+	private final Set<String> itemIdMisses = new HashSet<>();
 
 	public RuneLiteItemLookup(ItemManager itemManager)
 	{
 		this.itemManager = itemManager;
 	}
 
-	public Integer itemId(RecommendedItem item)
+	public synchronized Integer itemId(RecommendedItem item)
 	{
 		if (item == null || item.getName() == null || item.getName().trim().isEmpty())
 		{
 			return null;
 		}
+
 		String normalized = ItemResolver.normalize(item.getName());
 		if (normalized.isEmpty())
 		{
 			return null;
 		}
 
-		if (itemIdCache.containsKey(normalized))
+		Integer cached = itemIdCache.get(normalized);
+		if (cached != null)
 		{
-			return itemIdCache.get(normalized);
+			return cached;
+		}
+		if (itemIdMisses.contains(normalized))
+		{
+			return null;
 		}
 
-		if (!item.getItemIds().isEmpty())
+		for (Integer itemId : item.getItemIds())
 		{
-			Integer itemId = item.getItemIds().iterator().next();
-			if (itemId != null)
+			if (itemId != null && itemId > 0)
 			{
 				itemIdCache.put(normalized, itemId);
 				return itemId;
 			}
 		}
 
-		ItemPrice match = findExact(item.getName(), normalized);
-		Integer itemId = match == null ? null : match.getId();
-		itemIdCache.put(normalized, itemId);
-		return itemId;
+		Integer resolved = findExactItemId(item.getName(), normalized);
+		if (resolved != null)
+		{
+			itemIdCache.put(normalized, resolved);
+		}
+		return resolved;
 	}
 
-	public OptionalInt wikiPrice(RecommendedItem item)
+	private Integer findExactItemId(String name, String normalized)
 	{
-		if (item == null || item.getName() == null || item.getName().trim().isEmpty())
-		{
-			return OptionalInt.empty();
-		}
-		String normalized = ItemResolver.normalize(item.getName());
-		if (normalized.isEmpty())
-		{
-			return OptionalInt.empty();
-		}
-
-		OptionalInt cached = priceCache.get(normalized);
-		if (cached != null)
-		{
-			return cached;
-		}
-
-		ItemPrice match = findExact(item.getName(), normalized);
-		int price = match == null ? 0 : match.getWikiPrice() > 0 ? match.getWikiPrice() : match.getPrice();
-		OptionalInt result = price > 0 ? OptionalInt.of(price) : OptionalInt.empty();
-		priceCache.put(normalized, result);
-		return result;
-	}
-
-	private ItemPrice findExact(String name, String normalized)
-	{
-		if (searchCache.containsKey(normalized))
-		{
-			return searchCache.get(normalized);
-		}
-		if (searchMisses.contains(normalized) || itemManager == null || name == null)
+		if (itemManager == null)
 		{
 			return null;
 		}
 		try
 		{
-			java.util.List<ItemPrice> results = itemManager.search(name);
+			List<ItemPrice> results = itemManager.search(name);
 			if (results != null)
 			{
 				for (ItemPrice itemPrice : results)
 				{
-					if (itemPrice != null && itemPrice.getName() != null && ItemResolver.normalize(itemPrice.getName()).equals(normalized))
+					if (itemPrice != null && itemPrice.getName() != null
+						&& ItemResolver.normalize(itemPrice.getName()).equals(normalized))
 					{
-						searchCache.put(normalized, itemPrice);
-						return itemPrice;
+						return itemPrice.getId();
 					}
 				}
 			}
+			itemIdMisses.add(normalized);
 		}
-		catch (RuntimeException ex)
+		catch (RuntimeException ignored)
 		{
-			searchMisses.add(normalized);
-			return null;
+			// ItemManager may be unavailable while its price data is still initialising.
+			// Do not permanently negative-cache transient failures.
 		}
-		searchMisses.add(normalized);
 		return null;
 	}
 }

@@ -25,7 +25,8 @@ public class WikiStrategyParser
 {
 	private static final Pattern WIKI_HEADING = Pattern.compile("^=+\\s*(.+?)\\s*=+$");
 	private static final Pattern WIKI_LINK = Pattern.compile("\\[\\[([^\\]|#]+)(?:#[^\\]|]+)?(?:\\|([^\\]]+))?\\]\\]");
-	private static final Pattern TEMPLATE_LINK = Pattern.compile("\\{\\{\\s*[Pp]link\\s*\\|\\s*([^\\}|]+)(?:\\|[^\\}]*)?\\}\\}");
+	private static final Pattern TEMPLATE_LINK = Pattern.compile("\\{\\{\\s*[Pp]linkp?\\s*\\|\\s*([^\\}|]+)(?:\\|[^\\}]*)?\\}\\}");
+	private static final Pattern STYLE_PARAMETER = Pattern.compile("^\\|\\s*style\\s*=\\s*(.+)$", Pattern.CASE_INSENSITIVE);
 	private final RenderedStrategyParser renderedStrategyParser = new RenderedStrategyParser();
 
 	public WikiParsingResult parse(String monsterName, String wikiTitle, String wikiUrl, long revisionId, String text)
@@ -91,6 +92,14 @@ public class WikiStrategyParser
 			if (tabberMethod != null)
 			{
 				currentMethod = tabberMethod;
+				rememberMethod(methodOrder, currentMethod);
+				section = "equipment";
+				continue;
+			}
+			CombatMethod templateStyleMethod = methodForTemplateStyle(line);
+			if (templateStyleMethod != null && ("equipment".equals(section) || "method".equals(section)))
+			{
+				currentMethod = templateStyleMethod;
 				rememberMethod(methodOrder, currentMethod);
 				section = "equipment";
 				continue;
@@ -346,22 +355,38 @@ public class WikiStrategyParser
 		{
 			return null;
 		}
-		String normalized = line.trim().toLowerCase(Locale.ROOT)
-				.replaceFirst("^\\|-\\|\\s*", "")
-				.trim();
-		if (normalized.matches("^(ranged|range)(?:\\s*\\([^)]*\\))?\\s*=\\s*$"))
+
+		String normalized = line.trim();
+		if (normalized.startsWith("|-|"))
 		{
-			return CombatMethod.RANGED;
+			normalized = normalized.substring(3).trim();
 		}
-		if (normalized.matches("^melee(?:\\s*\\([^)]*\\))?\\s*=\\s*$"))
+		int equals = normalized.indexOf('=');
+		if (equals < 0)
 		{
-			return CombatMethod.MELEE;
+			return null;
 		}
-		if (normalized.matches("^(magic|mage)(?:\\s*\\([^)]*\\))?\\s*=\\s*$"))
+
+		String label = normalized.substring(0, equals).trim();
+		if (label.isEmpty() || label.indexOf('|') >= 0)
 		{
-			return CombatMethod.MAGIC;
+			return null;
 		}
-		return null;
+		return methodForHeading(label.toLowerCase(Locale.ROOT));
+	}
+
+	private CombatMethod methodForTemplateStyle(String line)
+	{
+		if (line == null)
+		{
+			return null;
+		}
+		Matcher matcher = STYLE_PARAMETER.matcher(line.trim());
+		if (!matcher.matches())
+		{
+			return null;
+		}
+		return methodForHeading(cleanItemName(matcher.group(1)).toLowerCase(Locale.ROOT));
 	}
 
 	private void parseVariants(String line, List<MonsterVariant> variants)
@@ -430,17 +455,19 @@ public class WikiStrategyParser
 				continue;
 			}
 			Integer templateRank = WikiGearSlots.templateRank(slotSplit[0]);
-			String[] tierParts = slotSplit[1].split(">");
+			String[] tierParts = tierParts(slotSplit[1]);
 			for (int i = 0; i < tierParts.length; i++)
 			{
-				String[] alternatives = tierParts[i].replace("<br/>", "/").replace("<br>", "/").split("/");
+				String[] alternatives = tierParts[i].split("/");
 				List<RecommendedItem> items = new ArrayList<>();
 				for (String alternative : alternatives)
 				{
-					String name = cleanItemName(alternative);
-					if (!name.isEmpty())
+					for (String name : itemNamesFromAlternative(alternative))
 					{
-						items.add(new RecommendedItem(name));
+						if (!name.isEmpty())
+						{
+							items.add(new RecommendedItem(name));
+						}
 					}
 				}
 				if (!items.isEmpty())
@@ -457,6 +484,36 @@ public class WikiStrategyParser
 			recommendations.add(new GearRecommendation(entry.getKey(), entry.getValue()));
 		}
 		return recommendations;
+	}
+
+	private String[] tierParts(String value)
+	{
+		String normalized = value == null ? "" : value.replaceAll("(?i)<br\\s*/?>", "/");
+		return normalized.split("\\s*>\\s*/?\\s*");
+	}
+
+	private List<String> itemNamesFromAlternative(String alternative)
+	{
+		if (alternative == null || alternative.trim().isEmpty())
+		{
+			return Collections.emptyList();
+		}
+		List<String> names = new ArrayList<>();
+		Matcher templateMatcher = TEMPLATE_LINK.matcher(alternative);
+		while (templateMatcher.find())
+		{
+			String name = cleanItemName(templateMatcher.group(1));
+			if (!name.isEmpty() && names.stream().noneMatch(existing -> existing.equalsIgnoreCase(name)))
+			{
+				names.add(name);
+			}
+		}
+		if (!names.isEmpty())
+		{
+			return names;
+		}
+		String name = cleanItemName(alternative);
+		return name.isEmpty() ? Collections.emptyList() : Collections.singletonList(name);
 	}
 
 	private String stripBullet(String line)

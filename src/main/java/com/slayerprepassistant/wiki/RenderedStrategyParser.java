@@ -8,14 +8,15 @@ import com.slayerprepassistant.guide.CombatMethod;
 import com.slayerprepassistant.guide.InventoryRecommendation;
 import com.slayerprepassistant.guide.MonsterGuide;
 import com.slayerprepassistant.guide.StrategyMethod;
+import com.slayerprepassistant.items.ItemResolver;
 import com.slayerprepassistant.model.ParsingConfidence;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -25,10 +26,12 @@ import java.util.stream.Collectors;
 
 class RenderedStrategyParser
 {
-	private static final Pattern TABBER_TAB = Pattern.compile("<div class=\"tabbertab\"[^>]*data-title=\"([^\"]+)\"[^>]*>(.*?)(?=<div class=\"tabbertab\"|</div></div>\\s*<!--|$)", Pattern.DOTALL);
-	private static final Pattern EQUIPMENT_TABLE = Pattern.compile("<table class=\"equipment equipment-right\"[^>]*>(.*?)</table>", Pattern.DOTALL);
-	private static final Pattern INVENTORY_TABLE = Pattern.compile("<table class=\"inventorytable storage-right\"[^>]*>(.*?)</table>", Pattern.DOTALL);
-	private static final Pattern EQUIPMENT_DIV = Pattern.compile("<div class=\"equipment-div\"[^>]*>(.*?)(?=<table|<div class=\"tabbertab\"|$)", Pattern.DOTALL);
+	private static final int HTML_PATTERN_FLAGS = Pattern.DOTALL | Pattern.CASE_INSENSITIVE;
+	private static final Pattern TABBER_TAB = Pattern.compile("<div[^>]*class=\"[^\"]*\\btabbertab\\b[^\"]*\"[^>]*data-title=\"([^\"]+)\"[^>]*>(.*?)(?=<div[^>]*class=\"[^\"]*\\btabbertab\\b|</div></div>\\s*<!--|$)", HTML_PATTERN_FLAGS);
+	private static final Pattern TABBER_TITLE = Pattern.compile("<div[^>]*class=\"[^\"]*\\btabbertab\\b[^\"]*\"[^>]*data-title=\"([^\"]+)\"", HTML_PATTERN_FLAGS);
+	private static final Pattern EQUIPMENT_TABLE = Pattern.compile("<table[^>]*class=\"(?=[^\"]*\\bequipment\\b)(?=[^\"]*\\bequipment-right\\b)[^\"]*\"[^>]*>(.*?)</table>", HTML_PATTERN_FLAGS);
+	private static final Pattern INVENTORY_TABLE = Pattern.compile("<table[^>]*class=\"(?=[^\"]*\\binventorytable\\b)(?=[^\"]*\\bstorage-right\\b)[^\"]*\"[^>]*>(.*?)</table>", HTML_PATTERN_FLAGS);
+	private static final Pattern EQUIPMENT_DIV = Pattern.compile("<div[^>]*class=\"[^\"]*\\bequipment-div\\b[^\"]*\"[^>]*>(.*?)(?=<table|<div[^>]*class=\"[^\"]*\\btabbertab\\b|$)", HTML_PATTERN_FLAGS);
 	private static final Pattern EQUIPMENT_SLOT_START = Pattern.compile("<div class=\"equipment-(head|cape|neck|ammo2?|weapon|body|torso|shield|legs|hands|gloves|feet|boots|ring)(?:\\s|\"|-)[^\"]*\">", Pattern.DOTALL);
 	private static final Pattern HTML_LINK = Pattern.compile("<a\\s+([^>]*)>", Pattern.DOTALL);
 	private static final Pattern HTML_HREF = Pattern.compile("href=\"/w/([^\"]+)\"");
@@ -63,8 +66,8 @@ class RenderedStrategyParser
 			{
 				mergedMethods.add(new StrategyMethod(
 						sourceMethod.getMethod(),
-						mergeMaxGear(htmlMethod.getGear(), sourceMethod.getGear()),
-						htmlMethod.getInventory().isEmpty() ? sourceMethod.getInventory() : htmlMethod.getInventory(),
+						mergeGearPreferRendered(htmlMethod.getGear(), sourceMethod.getGear()),
+						mergeInventory(htmlMethod.getInventory(), sourceMethod.getInventory()),
 						sourceMethod.getNotes(),
 						sourceMethod.getConfidence()));
 			}
@@ -92,12 +95,19 @@ class RenderedStrategyParser
 		List<StrategyMethod> methods = new ArrayList<>();
 		Matcher tabMatcher = TABBER_TAB.matcher(html);
 		boolean sawTab = false;
+		boolean hasCombatLabeledTab = hasCombatLabeledTab(html);
 
 		while (tabMatcher.find())
 		{
 			sawTab = true;
-			CombatMethod method = methodForHeading(htmlText(tabMatcher.group(1)).toLowerCase(Locale.ROOT));
-			if (method == null)
+			String title = htmlText(tabMatcher.group(1));
+			CombatMethod method = methodForHeading(title.toLowerCase(Locale.ROOT));
+			String tabHtml = tabMatcher.group(2);
+
+			// A generic outer/location tab (for example "Catacombs") must not inherit
+			// the source method when the page also contains explicitly-labelled combat tabs.
+			// Doing so is what previously allowed Magic/Ranged gear to be merged into Melee.
+			if (method == null && !hasCombatLabeledTab && fallbackMethod != null && equipmentBlockCount(tabHtml) <= 1)
 			{
 				method = fallbackMethod;
 			}
@@ -106,16 +116,15 @@ class RenderedStrategyParser
 				continue;
 			}
 
-			String tabHtml = tabMatcher.group(2);
 			List<GearRecommendation> gear = parseEquipment(tabHtml);
 			List<InventoryRecommendation> inventory = parseInventory(tabHtml);
 
-			if (!gear.isEmpty() || !inventory.isEmpty())
+			if ((!gear.isEmpty() || !inventory.isEmpty()) && findMethod(methods, method) == null)
 			{
 				methods.add(new StrategyMethod(method, gear, inventory, Collections.emptyList(), ParsingConfidence.HIGH));
 			}
 		}
-		if (!sawTab && fallbackMethod != null)
+		if (!sawTab && fallbackMethod != null && equipmentBlockCount(html) <= 1)
 		{
 			List<GearRecommendation> gear = parseEquipment(html);
 			List<InventoryRecommendation> inventory = parseInventory(html);
@@ -125,6 +134,43 @@ class RenderedStrategyParser
 			}
 		}
 		return methods;
+	}
+
+	private boolean hasCombatLabeledTab(String html)
+	{
+		Matcher matcher = TABBER_TITLE.matcher(html);
+		while (matcher.find())
+		{
+			if (methodForHeading(htmlText(matcher.group(1)).toLowerCase(Locale.ROOT)) != null)
+			{
+				return true;
+			}
+		}
+		return false;
+	}
+
+	private int equipmentBlockCount(String html)
+	{
+		if (html == null || html.isEmpty())
+		{
+			return 0;
+		}
+		int count = 0;
+		Matcher tableMatcher = EQUIPMENT_TABLE.matcher(html);
+		while (tableMatcher.find())
+		{
+			count++;
+		}
+		if (count > 0)
+		{
+			return count;
+		}
+		Matcher divMatcher = EQUIPMENT_DIV.matcher(html);
+		while (divMatcher.find())
+		{
+			count++;
+		}
+		return count;
 	}
 
 	private CombatMethod methodForHeading(String heading)
@@ -143,43 +189,116 @@ class RenderedStrategyParser
 				.orElse(null);
 	}
 
-	private List<GearRecommendation> mergeMaxGear(List<GearRecommendation> maxGear, List<GearRecommendation> alternatives)
+	private List<GearRecommendation> mergeGearPreferRendered(List<GearRecommendation> rendered, List<GearRecommendation> source)
 	{
-		Map<GearSlot, List<GearTier>> bySlot = new EnumMap<>(GearSlot.class);
-
-		maxGear.forEach(rec -> bySlot.computeIfAbsent(rec.getSlot(), k -> new ArrayList<>()).addAll(rec.getTiers()));
-
-		for (GearRecommendation recommendation : alternatives)
+		Map<GearSlot, GearRecommendation> bySlot = new EnumMap<>(GearSlot.class);
+		if (source != null)
 		{
-			List<GearTier> tiers = bySlot.computeIfAbsent(recommendation.getSlot(), k -> new ArrayList<>());
-			int offset = tiers.stream().mapToInt(GearTier::getPriority).max().orElse(0);
-
-			for (GearTier tier : recommendation.getTiers())
+			for (GearRecommendation recommendation : source)
 			{
-				List<RecommendedItem> items = tier.getAlternatives().stream()
-						.filter(item -> !containsItem(tiers, item.getName()))
-						.collect(Collectors.toList());
-
-				if (!items.isEmpty())
+				if (recommendation != null && recommendation.getSlot() != null)
 				{
-					tiers.add(new GearTier(offset + tier.getPriority(), items));
+					bySlot.put(recommendation.getSlot(), recommendation);
 				}
 			}
 		}
-
-		return bySlot.entrySet().stream()
-				.map(entry -> {
-					entry.getValue().sort(Comparator.comparingInt(GearTier::getPriority));
-					return new GearRecommendation(entry.getKey(), entry.getValue());
-				})
-				.collect(Collectors.toList());
+		if (rendered != null)
+		{
+			for (GearRecommendation recommendation : rendered)
+			{
+				if (recommendation != null && recommendation.getSlot() != null && recommendation.getTiers() != null && !recommendation.getTiers().isEmpty())
+				{
+					GearRecommendation sourceRecommendation = bySlot.get(recommendation.getSlot());
+					if (sourceRecommendation == null
+							|| !hasRankedAlternatives(sourceRecommendation)
+							|| isRicherRecommendation(recommendation, sourceRecommendation))
+					{
+						bySlot.put(recommendation.getSlot(), recommendation);
+					}
+				}
+			}
+		}
+		return new ArrayList<>(bySlot.values());
 	}
 
-	private boolean containsItem(List<GearTier> tiers, String name)
+	private boolean hasRankedAlternatives(GearRecommendation recommendation)
 	{
-		return tiers.stream()
-				.flatMap(tier -> tier.getAlternatives().stream())
-				.anyMatch(item -> item.getName().equalsIgnoreCase(name));
+		return tierCount(recommendation) > 1 || itemCount(recommendation) > 1;
+	}
+
+	private boolean isRicherRecommendation(GearRecommendation candidate, GearRecommendation existing)
+	{
+		return itemCount(candidate) > itemCount(existing) || tierCount(candidate) > tierCount(existing);
+	}
+
+	private int tierCount(GearRecommendation recommendation)
+	{
+		return recommendation == null || recommendation.getTiers() == null ? 0 : recommendation.getTiers().size();
+	}
+
+	private int itemCount(GearRecommendation recommendation)
+	{
+		if (recommendation == null || recommendation.getTiers() == null)
+		{
+			return 0;
+		}
+		int count = 0;
+		for (GearTier tier : recommendation.getTiers())
+		{
+			if (tier != null && tier.getAlternatives() != null)
+			{
+				count += tier.getAlternatives().size();
+			}
+		}
+		return count;
+	}
+
+	private List<InventoryRecommendation> mergeInventory(List<InventoryRecommendation> rendered, List<InventoryRecommendation> source)
+	{
+		if ((rendered == null || rendered.isEmpty()) && (source == null || source.isEmpty()))
+		{
+			return Collections.emptyList();
+		}
+
+		Map<String, InventoryRecommendation> merged = new LinkedHashMap<>();
+		if (rendered != null)
+		{
+			for (InventoryRecommendation recommendation : rendered)
+			{
+				mergeInventoryRecommendation(merged, recommendation);
+			}
+		}
+		if (source != null)
+		{
+			for (InventoryRecommendation recommendation : source)
+			{
+				mergeInventoryRecommendation(merged, recommendation);
+			}
+		}
+		return new ArrayList<>(merged.values());
+	}
+
+	private void mergeInventoryRecommendation(Map<String, InventoryRecommendation> merged, InventoryRecommendation recommendation)
+	{
+		if (recommendation == null)
+		{
+			return;
+		}
+		String key = ItemResolver.canonicalKey(recommendation.getItemOrCategory());
+		if (key.isEmpty())
+		{
+			return;
+		}
+		InventoryRecommendation existing = merged.get(key);
+		if (existing == null)
+		{
+			merged.put(key, recommendation);
+			return;
+		}
+		merged.put(key, new InventoryRecommendation(
+			existing.getItemOrCategory(),
+			Math.max(existing.getMinimumQuantity(), recommendation.getMinimumQuantity()),
+			existing.isRequired() || recommendation.isRequired()));
 	}
 
 	private List<GearRecommendation> parseEquipment(String html)
@@ -242,14 +361,15 @@ class RenderedStrategyParser
 	private List<InventoryRecommendation> parseInventory(String html)
 	{
 		Matcher tableMatcher = INVENTORY_TABLE.matcher(html);
-		if (!tableMatcher.find())
+		Map<String, InventoryRecommendation> inventory = new LinkedHashMap<>();
+		while (tableMatcher.find())
 		{
-			return Collections.emptyList();
+			for (RecommendedItem item : htmlItems(tableMatcher.group(1)))
+			{
+				mergeInventoryRecommendation(inventory, new InventoryRecommendation(item.getName(), 0, true));
+			}
 		}
-
-		return htmlItems(tableMatcher.group(1)).stream()
-				.map(item -> new InventoryRecommendation(item.getName(), 0, true))
-				.collect(Collectors.toList());
+		return inventory.isEmpty() ? Collections.emptyList() : new ArrayList<>(inventory.values());
 	}
 
 	private List<RecommendedItem> htmlItems(String html)
@@ -331,8 +451,15 @@ class RenderedStrategyParser
 		{
 			fileName = fileName.replaceFirst("_\\d+$", "");
 		}
-		String decoded = URLDecoder.decode(fileName.replace('_', ' '), StandardCharsets.UTF_8);
-		return htmlText(decoded);
+		try
+		{
+			String decoded = URLDecoder.decode(fileName.replace('_', ' '), StandardCharsets.UTF_8);
+			return htmlText(decoded);
+		}
+		catch (IllegalArgumentException ex)
+		{
+			return htmlText(fileName.replace('_', ' '));
+		}
 	}
 
 	private boolean isUsableItemTitle(String name)

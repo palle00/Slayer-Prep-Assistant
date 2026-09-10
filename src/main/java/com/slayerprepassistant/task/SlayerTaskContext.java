@@ -1,5 +1,7 @@
 package com.slayerprepassistant.task;
 
+import java.util.Objects;
+
 public class SlayerTaskContext
 {
 	private static final SlayerTaskContext NONE = new SlayerTaskContext("", 0, 0, "", false);
@@ -48,4 +50,29 @@ public class SlayerTaskContext
 	{
 		return active;
 	}
+	@Override
+	public boolean equals(Object other)
+	{
+		if (this == other)
+		{
+			return true;
+		}
+		if (!(other instanceof SlayerTaskContext))
+		{
+			return false;
+		}
+		SlayerTaskContext that = (SlayerTaskContext) other;
+		return remainingAmount == that.remainingAmount
+			&& initialAmount == that.initialAmount
+			&& active == that.active
+			&& Objects.equals(taskName, that.taskName)
+			&& Objects.equals(assignedLocation, that.assignedLocation);
+	}
+
+	@Override
+	public int hashCode()
+	{
+		return Objects.hash(taskName, remainingAmount, initialAmount, assignedLocation, active);
+	}
+
 }

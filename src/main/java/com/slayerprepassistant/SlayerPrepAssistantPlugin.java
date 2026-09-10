@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.google.inject.Provides;
 import com.slayerprepassistant.bank.PlayerStateTracker;
 import com.slayerprepassistant.gear.LoadoutMode;
-import com.slayerprepassistant.gear.RecommendedItem;
 import com.slayerprepassistant.guide.CombatMethod;
 import com.slayerprepassistant.guide.MonsterGuide;
 import com.slayerprepassistant.items.ItemResolver;
@@ -33,12 +32,10 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.OptionalInt;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
 import javax.inject.Inject;
-import javax.swing.JOptionPane;
 import javax.swing.SwingUtilities;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
@@ -52,7 +49,6 @@ import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.MenuEntryAdded;
 import net.runelite.api.events.MenuOptionClicked;
 import net.runelite.api.gameval.InventoryID;
-import net.runelite.api.widgets.Widget;
 import net.runelite.api.events.VarbitChanged;
 import net.runelite.api.gameval.ItemID;
 import net.runelite.api.gameval.VarPlayerID;
@@ -62,6 +58,7 @@ import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemVariationMapping;
+import net.runelite.client.game.SpriteManager;
 import net.runelite.client.events.ConfigChanged;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
@@ -77,8 +74,6 @@ public class SlayerPrepAssistantPlugin extends Plugin
 {
 	private static final Logger log = LoggerFactory.getLogger(SlayerPrepAssistantPlugin.class);
 	private static final String CONFIG_GROUP = "slayer-prep-assistant";
-	private static final String THIRD_PARTY_WARNING_ACKNOWLEDGED_KEY = "thirdPartyWarningAcknowledged";
-	private static final String THIRD_PARTY_WARNING = "This feature submits your IP address to a 3rd-party server not controlled or verified by RuneLite developers";
 	private static final String SLAYER_GUIDE_MENU_OPTION = "Slayer guide";
 
 	@Inject
@@ -87,8 +82,6 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Inject
 	private SlayerPrepAssistantConfig config;
 
-	@Inject
-	private ConfigManager configManager;
 
 	@Inject
 	private ClientToolbar clientToolbar;
@@ -104,6 +97,9 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	@Inject
 	private ItemManager itemManager;
+
+	@Inject
+	private SpriteManager spriteManager;
 
 	private final PlayerStateTracker playerStateTracker = new PlayerStateTracker();
 	private final WikiStrategyParser wikiStrategyParser = new WikiStrategyParser();
@@ -133,12 +129,12 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		itemResolver = new ItemResolver();
 		itemLookup = new RuneLiteItemLookup(itemManager);
 		targetResolver = new TaskTargetResolver();
-		preparationEngine = new PreparationEngine(itemResolver, this::priceFor);
+		preparationEngine = new PreparationEngine(itemResolver);
 		slayerTaskService = new SlayerTaskService();
 		wikiClient = new WikiClient(okHttpClient, gson);
 		wikiImageService = new WikiImageService(wikiClient, config::useWikiStrategyData);
 		wikiSetupLoader = new WikiSetupLoader(wikiClient, wikiStrategyParser, clientThread::invoke);
-		panel = new SlayerPrepAssistantPanel(this::selectTarget, this::refreshPreparation, wikiImageService::load, itemManager, itemResolver, itemLookup, createIcon(32));
+		panel = new SlayerPrepAssistantPanel(this::selectTarget, this::refreshPreparation, wikiImageService::load, itemManager, spriteManager, itemResolver, itemLookup, createIcon(32));
 		navigationButton = NavigationButton.builder()
 				.tooltip("Slayer Prep Assistant")
 				.icon(createIcon(16))
@@ -146,7 +142,6 @@ public class SlayerPrepAssistantPlugin extends Plugin
 				.panel(panel)
 				.build();
 		clientToolbar.addNavigation(navigationButton);
-		showThirdPartyWarningIfNeeded();
 		refreshTask();
 		log.debug("Slayer Prep Assistant started");
 	}
@@ -154,6 +149,11 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Override
 	protected void shutDown()
 	{
+		wikiRequestId++;
+		if (wikiClient != null)
+		{
+			wikiClient.cancelOutstanding();
+		}
 		if (panel != null)
 		{
 			panel.dispose();
@@ -162,6 +162,14 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		{
 			clientToolbar.removeNavigation(navigationButton);
 		}
+		preferredStrategyPageByTarget.clear();
+		currentTargets = new ArrayList<>();
+		selectedTarget = null;
+		panel = null;
+		navigationButton = null;
+		wikiSetupLoader = null;
+		wikiImageService = null;
+		wikiClient = null;
 		log.debug("Slayer Prep Assistant stopped");
 	}
 
@@ -222,6 +230,8 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			lastPreparationRequestKey = "";
 			if (CONFIG_GROUP.equals(group))
 			{
+				wikiRequestId++;
+				loadTaskImage(selectedTarget);
 				refreshPreparation();
 				return;
 			}
@@ -287,7 +297,8 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		}
 		if (taskChanged || currentTargets.isEmpty())
 		{
-			currentTargets = Objects.requireNonNullElse(targetResolver.resolve(currentTask), new ArrayList<>());
+			List<TargetOption> resolvedTargets = targetResolver.resolve(currentTask);
+			currentTargets = resolvedTargets == null ? new ArrayList<>() : new ArrayList<>(resolvedTargets);
 			if (selectedTarget == null || !currentTargets.contains(selectedTarget))
 			{
 				selectedTarget = currentTargets.isEmpty() ? null : currentTargets.get(0);
@@ -322,26 +333,6 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		lastPreparationRequestKey = "";
 		loadTaskImage(target);
 		refreshPreparation();
-	}
-
-	private void showThirdPartyWarningIfNeeded()
-	{
-		if (config != null && config.thirdPartyWarningAcknowledged())
-		{
-			return;
-		}
-		SwingUtilities.invokeLater(() ->
-		{
-			JOptionPane.showMessageDialog(
-					null,
-					THIRD_PARTY_WARNING,
-					"Slayer Prep Assistant",
-					JOptionPane.WARNING_MESSAGE);
-			if (configManager != null)
-			{
-				configManager.setConfiguration(CONFIG_GROUP, THIRD_PARTY_WARNING_ACKNOWLEDGED_KEY, true);
-			}
-		});
 	}
 
 	private void refreshPreparation()
@@ -417,45 +408,14 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Subscribe
 	public void onMenuOptionClicked(MenuOptionClicked event)
 	{
-		if (event == null)
+		if (event == null
+			|| (event.getMenuAction() != MenuAction.CC_OP && event.getMenuAction() != MenuAction.CC_OP_LOW_PRIORITY)
+			|| !"Check".equals(event.getMenuOption()))
 		{
 			return;
 		}
-		if ((event.getMenuAction() != MenuAction.CC_OP && event.getMenuAction() != MenuAction.CC_OP_LOW_PRIORITY)
-				|| !"Check".equals(event.getMenuOption()))
-		{
-			return;
-		}
-		if (client == null)
-		{
-			return;
-		}
-		Widget widget = client.getWidget(event.getParam1());
-		if (widget == null)
-		{
-			return;
-		}
-		if (event.getParam0() != -1)
-		{
-			widget = widget.getChild(event.getParam0());
-			if (widget == null)
-			{
-				return;
-			}
-		}
-		int itemId = widget.getItemId();
-		Widget[] dynamicChildren = widget.getDynamicChildren();
-		if (dynamicChildren != null)
-		{
-			for (Widget child : dynamicChildren)
-			{
-				if (child != null && itemId == -1)
-				{
-					itemId = child.getItemId();
-				}
-			}
-		}
-		itemId = ItemVariationMapping.map(itemId);
+
+		int itemId = ItemVariationMapping.map(event.getItemId());
 		if (itemId == ItemID.SLAYER_HELM || itemId == ItemID.SLAYER_RING_8 || itemId == ItemID.SLAYER_GEM)
 		{
 			log.debug("Slayer task check item clicked");
@@ -603,8 +563,9 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			showFilteredVariants(originalTarget, variantsWithSetup);
 			return;
 		}
+
 		TargetOption variant = variants.get(index);
-		checkVariantSetup(requestId, originalTarget, variant, strategyPageCandidates(variant), 0, hasSetup ->
+		checkVariantSetup(requestId, originalTarget, variant, hasSetup ->
 		{
 			if (hasSetup)
 			{
@@ -631,32 +592,34 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		panel.showVariantSelection(currentTask, currentTargets, "No direct setup found. Choose a monster variant.");
 	}
 
-	private void checkVariantSetup(int requestId, TargetOption originalTarget, TargetOption variant, List<String> candidates, int index, Consumer<Boolean> resultConsumer)
+	private void checkVariantSetup(int requestId, TargetOption originalTarget, TargetOption variant, Consumer<Boolean> resultConsumer)
 	{
 		if (originalTarget == null || requestId != wikiRequestId || !originalTarget.equals(selectedTarget) || resultConsumer == null)
 		{
 			return;
 		}
-		if (candidates == null || index >= candidates.size())
-		{
-			resultConsumer.accept(false);
-			return;
-		}
-		String strategyTitle = candidates.get(index);
 		if (wikiSetupLoader == null)
 		{
 			resultConsumer.accept(false);
 			return;
 		}
-		wikiSetupLoader.loadStrategyCandidate(requestId, originalTarget, variant, strategyTitle, this::isStaleWikiRequest, parsed ->
-		{
-			if (hasUsableSetup(variant, parsed))
+
+		wikiSetupLoader.loadStrategy(
+			requestId,
+			originalTarget,
+			variant,
+			strategyPageCandidates(variant),
+			this::isStaleWikiRequest,
+			(parsed, finalCandidate) ->
 			{
-				resultConsumer.accept(true);
-				return;
-			}
-			checkVariantSetup(requestId, originalTarget, variant, candidates, index + 1, resultConsumer);
-		});
+				if (hasUsableSetup(variant, parsed))
+				{
+					resultConsumer.accept(true);
+					return true;
+				}
+				return false;
+			},
+			() -> resultConsumer.accept(false));
 	}
 
 	private boolean isStaleWikiRequest(int requestId, TargetOption target)
@@ -686,7 +649,6 @@ public class SlayerPrepAssistantPlugin extends Plugin
 				+ "|" + method
 				+ "|" + mode
 				+ "|wiki=" + (config != null && config.useWikiStrategyData())
-				+ "|price=" + (config != null && config.useWikiPriceData())
 				+ "|" + (playerStateTracker != null ? playerStateTracker.getStateKey() : "");
 	}
 
@@ -711,15 +673,6 @@ public class SlayerPrepAssistantPlugin extends Plugin
 				+ "|" + task.getRemainingAmount()
 				+ "|" + task.getInitialAmount()
 				+ "|" + Objects.requireNonNullElse(task.getAssignedLocation(), "");
-	}
-
-	private OptionalInt priceFor(RecommendedItem item)
-	{
-		if (config == null || !config.useWikiPriceData() || item == null || item.getName() == null || item.getName().trim().isEmpty() || itemLookup == null)
-		{
-			return OptionalInt.empty();
-		}
-		return itemLookup.wikiPrice(item);
 	}
 
 	private List<String> strategyPageCandidates(TargetOption target)
@@ -747,12 +700,13 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			panel.setTaskImage(null);
 			return;
 		}
-		wikiImageService.load(title, 48, image -> {
+		wikiImageService.load(title, 48, image ->
+		{
 			if (clientThread != null)
 			{
 				clientThread.invoke(() ->
 				{
-					if (target.equals(selectedTarget) && panel != null)
+					if (config != null && config.useWikiStrategyData() && target.equals(selectedTarget) && panel != null)
 					{
 						panel.setTaskImage(image);
 					}

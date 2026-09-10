@@ -46,19 +46,21 @@ public class SlayerTaskService
 			return false;
 		}
 		Optional<SlayerTaskContext> parsed = chatMessageParser.parse(message, chatDetectedTask);
-		if (!parsed.isPresent() || !parsed.get().equals(chatDetectedTask))
+		if (!parsed.isPresent())
 		{
-			// If updated or parsed successfully, synchronize update safely
-			synchronized (this)
-			{
-				if (parsed.isPresent())
-				{
-					chatDetectedTask = parsed.get();
-					return true;
-				}
-			}
+			return false;
 		}
-		return false;
+
+		synchronized (this)
+		{
+			SlayerTaskContext next = parsed.get();
+			if (next.equals(chatDetectedTask))
+			{
+				return false;
+			}
+			chatDetectedTask = next;
+			return true;
+		}
 	}
 
 	private SlayerTaskContext readClientTask(Client client)

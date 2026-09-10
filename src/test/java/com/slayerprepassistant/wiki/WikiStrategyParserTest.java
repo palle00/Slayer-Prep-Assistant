@@ -269,15 +269,59 @@ public class WikiStrategyParserTest
 		assertEquals("Dragon hunter crossbow", itemForSlot(result, GearSlot.WEAPON));
 	}
 
+	@Test
+	public void sourceRecommendedEquipmentAlternativesSurviveRenderedMaxPanel()
+	{
+		String text = "==Equipment==\n"
+			+ "<tabber>\n"
+			+ "Melee=\n"
+			+ "{{Equipment|align = right|neck = Amulet of rancour|torso = Torva platebody|weapon = Emberlight}}\n"
+			+ "{{Recommended equipment\n"
+			+ "|style = Melee\n"
+			+ "|neck1 = {{plink|Amulet of rancour}}\n"
+			+ "|neck2 = {{plink|Amulet of torture}}\n"
+			+ "|neck3 = {{plink|Amulet of fury}}\n"
+			+ "|body1 = {{plink|Torva platebody}} /<br/>{{plink|Oathplate chest}}\n"
+			+ "|body2 = {{plink|Bandos chestplate}} (or: {{plinkp|Fighter torso}}{{plinkp|Blood moon chestplate}})\n"
+			+ "|weapon1 = {{plink|Emberlight}}\n"
+			+ "|weapon2 = {{plink|Soulreaper axe}}\n"
+			+ "|weapon3 = {{plink|Arclight}}\n"
+			+ "}}\n"
+			+ "</tabber>";
+		String html = "<div class=\"tabbertab\" data-title=\"Melee\">"
+			+ "<table class=\"equipment equipment-right\"><tbody><tr><td>"
+			+ "<div class=\"equipment-div\">"
+			+ "<div class=\"equipment-neck equipment-blank\"><div><a href=\"/w/Amulet_of_rancour\" title=\"Amulet of rancour\"></a></div></div>"
+			+ "<div class=\"equipment-torso equipment-blank\"><div><a href=\"/w/Torva_platebody\" title=\"Torva platebody\"></a></div></div>"
+			+ "<div class=\"equipment-weapon equipment-blank\"><div><a href=\"/w/Emberlight\" title=\"Emberlight\"></a></div></div>"
+			+ "</div></td></tr></tbody></table>"
+			+ "</div></div>";
+
+		WikiParsingResult source = new WikiStrategyParser().parse("Abyssal demons", "Slayer task/Abyssal demons", "https://oldschool.runescape.wiki/w/Slayer_task/Abyssal_demons", 15311146, text);
+		WikiParsingResult result = new WikiStrategyParser().mergeRenderedHtml(source, html);
+
+		assertEquals("Amulet of rancour", itemForSlot(result, GearSlot.NECK));
+		assertEquals(3, recommendationForSlot(result, GearSlot.NECK).getTiers().size());
+		assertEquals("Amulet of torture", recommendationForSlot(result, GearSlot.NECK).getTiers().get(1).getAlternatives().get(0).getName());
+		assertEquals("Fighter torso", recommendationForSlot(result, GearSlot.BODY).getTiers().get(1).getAlternatives().get(1).getName());
+		assertEquals("Blood moon chestplate", recommendationForSlot(result, GearSlot.BODY).getTiers().get(1).getAlternatives().get(2).getName());
+		assertEquals("Arclight", recommendationForSlot(result, GearSlot.WEAPON).getTiers().get(2).getAlternatives().get(0).getName());
+	}
+
 	private String itemForSlot(WikiParsingResult result, GearSlot slot)
+	{
+		return recommendationForSlot(result, slot)
+			.getTiers().get(0)
+			.getAlternatives().get(0)
+			.getName();
+	}
+
+	private GearRecommendation recommendationForSlot(WikiParsingResult result, GearSlot slot)
 	{
 		return result.getGuide().getMethods().get(0).getGear().stream()
 			.filter(recommendation -> recommendation.getSlot() == slot)
 			.findFirst()
-			.get()
-			.getTiers().get(0)
-			.getAlternatives().get(0)
-			.getName();
+			.get();
 	}
 
 	private String maxRangedEquipmentHtml()

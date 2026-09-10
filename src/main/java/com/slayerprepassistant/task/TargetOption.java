@@ -49,13 +49,14 @@ public class TargetOption
 		}
 		TargetOption that = (TargetOption) other;
 		return Objects.equals(displayName, that.displayName)
+				&& Objects.equals(wikiPage, that.wikiPage)
 				&& Objects.equals(strategyPage, that.strategyPage);
 	}
 
 	@Override
 	public int hashCode()
 	{
-		return Objects.hash(displayName, strategyPage);
+		return Objects.hash(displayName, wikiPage, strategyPage);
 	}
 
 	@Override

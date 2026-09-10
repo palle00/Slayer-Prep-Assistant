@@ -1,5 +1,6 @@
 package com.slayerprepassistant.bank;
 
+import com.slayerprepassistant.items.ItemResolver;
 import java.time.Instant;
 import java.util.Collections;
 import java.util.HashMap;
@@ -21,10 +22,12 @@ public class BankSnapshotService
 		{
 			return;
 		}
-
-		Map<Integer, ItemComposition> compositionsById = toCompositions(container, client);
-		Set<Integer> placeholderIds = placeholderIds(compositionsById);
-		this.snapshot = new BankSnapshot(toQuantities(container, placeholderIds), toNames(container, compositionsById, placeholderIds), Instant.now());
+		ContainerSnapshot captured = capture(container, client, true);
+		BankSnapshot next = new BankSnapshot(captured.quantitiesById, captured.itemNames, captured.quantitiesByCanonicalName, Instant.now());
+		if (!next.equals(snapshot))
+		{
+			snapshot = next;
+		}
 	}
 
 	public BankSnapshot getSnapshot()
@@ -46,7 +49,7 @@ public class BankSnapshotService
 		Map<Integer, Integer> quantities = new HashMap<>();
 		for (Item item : container.getItems())
 		{
-			if (item != null && item.getId() > 0 && item.getQuantity() > 0 && (ignoredIds == null || !ignoredIds.contains(item.getId())))
+			if (isUsable(item) && (ignoredIds == null || !ignoredIds.contains(item.getId())))
 			{
 				quantities.merge(item.getId(), item.getQuantity(), Integer::sum);
 			}
@@ -56,69 +59,77 @@ public class BankSnapshotService
 
 	public static Set<String> toNames(ItemContainer container, Client client)
 	{
-		if (container == null || client == null)
-		{
-			return Collections.emptySet();
-		}
-		return toNames(container, toCompositions(container, client), Collections.emptySet());
+		return capture(container, client, false).itemNames;
 	}
 
-	private static Set<String> toNames(ItemContainer container, Map<Integer, ItemComposition> compositionsById, Set<Integer> ignoredIds)
+	static ContainerSnapshot capture(ItemContainer container, Client client, boolean ignorePlaceholders)
 	{
+		if (container == null)
+		{
+			return ContainerSnapshot.empty();
+		}
+
+		Map<Integer, Integer> quantities = new HashMap<>();
 		Set<String> names = new HashSet<>();
+		Map<String, Integer> quantitiesByCanonicalName = new HashMap<>();
+		Map<Integer, ItemComposition> compositionsById = new HashMap<>();
+
 		for (Item item : container.getItems())
 		{
-			if (item == null || item.getId() <= 0 || item.getQuantity() <= 0 || (ignoredIds != null && ignoredIds.contains(item.getId())))
+			if (!isUsable(item))
 			{
 				continue;
 			}
-			ItemComposition composition = compositionsById.get(item.getId());
-			if (composition != null)
+
+			ItemComposition composition = null;
+			if (client != null)
 			{
-				String name = composition.getName();
-				if (name != null && !name.trim().isEmpty())
+				composition = compositionsById.computeIfAbsent(item.getId(), client::getItemDefinition);
+				if (ignorePlaceholders && composition != null && composition.getPlaceholderTemplateId() >= 0)
 				{
-					names.add(name);
+					continue;
 				}
 			}
-		}
-		return names;
-	}
 
-	private static Map<Integer, ItemComposition> toCompositions(ItemContainer container, Client client)
-	{
-		if (container == null || client == null)
-		{
-			return Collections.emptyMap();
-		}
-
-		Map<Integer, ItemComposition> compositionsById = new HashMap<>();
-		for (Item item : container.getItems())
-		{
-			if (item != null && item.getId() > 0 && item.getQuantity() > 0 && !compositionsById.containsKey(item.getId()))
+			quantities.merge(item.getId(), item.getQuantity(), Integer::sum);
+			if (composition == null || composition.getName() == null || composition.getName().trim().isEmpty())
 			{
-				compositionsById.put(item.getId(), client.getItemDefinition(item.getId()));
+				continue;
+			}
+
+			String name = composition.getName();
+			names.add(name);
+			String canonical = ItemResolver.canonicalKey(name);
+			if (!canonical.isEmpty())
+			{
+				quantitiesByCanonicalName.merge(canonical, item.getQuantity(), Integer::sum);
 			}
 		}
-		return compositionsById;
+
+		return new ContainerSnapshot(quantities, names, quantitiesByCanonicalName);
 	}
 
-	private static Set<Integer> placeholderIds(Map<Integer, ItemComposition> compositionsById)
+	private static boolean isUsable(Item item)
 	{
-		if (compositionsById == null || compositionsById.isEmpty())
+		return item != null && item.getId() > 0 && item.getQuantity() > 0;
+	}
+
+	static final class ContainerSnapshot
+	{
+		final Map<Integer, Integer> quantitiesById;
+		final Set<String> itemNames;
+		final Map<String, Integer> quantitiesByCanonicalName;
+
+		private ContainerSnapshot(Map<Integer, Integer> quantitiesById, Set<String> itemNames, Map<String, Integer> quantitiesByCanonicalName)
 		{
-			return Collections.emptySet();
+			this.quantitiesById = quantitiesById;
+			this.itemNames = itemNames;
+			this.quantitiesByCanonicalName = quantitiesByCanonicalName;
 		}
 
-		Set<Integer> placeholderIds = new HashSet<>();
-		for (Map.Entry<Integer, ItemComposition> entry : compositionsById.entrySet())
+		private static ContainerSnapshot empty()
 		{
-			ItemComposition composition = entry.getValue();
-			if (composition != null && composition.getPlaceholderTemplateId() >= 0)
-			{
-				placeholderIds.add(entry.getKey());
-			}
+			return new ContainerSnapshot(Collections.emptyMap(), Collections.emptySet(), Collections.emptyMap());
 		}
-		return placeholderIds;
 	}
 }

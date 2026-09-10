@@ -16,8 +16,10 @@ public class RecommendedItem
 
 	public RecommendedItem(String name, Set<Integer> itemIds)
 	{
-		this.name = name;
-		this.itemIds = Collections.unmodifiableSet(new HashSet<>(itemIds));
+		this.name = name == null ? "" : name;
+		this.itemIds = itemIds == null || itemIds.isEmpty()
+			? Collections.emptySet()
+			: Collections.unmodifiableSet(new HashSet<>(itemIds));
 	}
 
 	public String getName()

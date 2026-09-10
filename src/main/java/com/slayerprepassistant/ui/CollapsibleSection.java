@@ -24,11 +24,6 @@ class CollapsibleSection extends RoundedPanel
 	private final Runnable refresh;
 	private boolean open;
 
-	CollapsibleSection(String title, String summary, boolean defaultOpen, JPanel body, Runnable refresh)
-	{
-		this(title, summary, null, defaultOpen, body, refresh);
-	}
-
 	CollapsibleSection(String title, String summary, Icon icon, boolean defaultOpen, JPanel body, Runnable refresh)
 	{
 		super(new BorderLayout(0, 5), SlayerPrepAssistantPanel.PANEL, SlayerPrepAssistantPanel.CARD_RADIUS);
@@ -41,7 +36,7 @@ class CollapsibleSection extends RoundedPanel
 
 		setBorder(BorderFactory.createCompoundBorder(
 				new RoundedBorder(SlayerPrepAssistantPanel.BORDER, SlayerPrepAssistantPanel.CARD_RADIUS),
-				BorderFactory.createEmptyBorder(7, 8, 7, 8)));
+				BorderFactory.createEmptyBorder(7, 6, 7, 6)));
 		setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		JButton header = headerButton();
@@ -87,9 +82,9 @@ class CollapsibleSection extends RoundedPanel
 			@Override
 			public void mouseEntered(MouseEvent event)
 			{
-				button.setBackground(new Color(34, 34, 34));
+				button.setBackground(new Color(35, 35, 32));
 				button.setForeground(Color.WHITE);
-				button.setBorder(headerBorder(new Color(118, 118, 118)));
+				button.setBorder(headerBorder(new Color(116, 107, 84)));
 			}
 
 			@Override
@@ -111,18 +106,18 @@ class CollapsibleSection extends RoundedPanel
 	{
 		return BorderFactory.createCompoundBorder(
 				new RoundedBorder(color, SlayerPrepAssistantPanel.CONTROL_RADIUS),
-				BorderFactory.createEmptyBorder(4, 6, 4, 6));
+				BorderFactory.createEmptyBorder(4, 4, 4, 4));
 	}
 
 	private String headerText()
 	{
 		String safeTitle = title == null ? "" : title;
-		String safeSummary = summary == null || summary.isEmpty() ? "" : "  " + summary;
+		String safeSummary = summary == null || summary.isEmpty() ? "" : "  " + summary + " ready";
 		String arrow = open ? "v" : ">";
 		return safeTitle + safeSummary + "  " + arrow;
 	}
 
-	private void updateHeight()
+	void updateHeight()
 	{
 		revalidate();
 		Dimension preferred = getPreferredSize();

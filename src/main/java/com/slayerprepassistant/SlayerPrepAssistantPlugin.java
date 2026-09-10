@@ -482,7 +482,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		int requestId = ++wikiRequestId;
 		if (!hasVisibleSetupFor(target) && panel != null)
 		{
-			panel.showLoading(currentTask, currentTargets, target);
+			panel.showLoading(currentTargets, target);
 		}
 		wikiSetupLoader.loadStrategy(
 				requestId,
@@ -546,7 +546,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		}
 		if (!hasVisibleSetupFor(target) && panel != null)
 		{
-			panel.showLoading(currentTask, currentTargets, target);
+			panel.showLoading(currentTargets, target);
 		}
 		filterWikiVariants(requestId, target, variants, new ArrayList<>(), 0);
 		return true;

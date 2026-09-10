@@ -29,11 +29,10 @@ import java.awt.GridLayout;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.RenderingHints;
-import java.awt.Toolkit;
-import java.awt.datatransfer.StringSelection;
 import java.awt.image.BufferedImage;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -53,6 +52,7 @@ import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
+import javax.swing.JProgressBar;
 import javax.swing.JScrollBar;
 import javax.swing.JScrollPane;
 import javax.swing.SwingConstants;
@@ -73,35 +73,35 @@ import net.runelite.client.util.LinkBrowser;
 
 public class SlayerPrepAssistantPanel extends PluginPanel
 {
-	static final Color BACKGROUND = new Color(46, 46, 46);
-	static final Color PANEL = new Color(34, 34, 34);
-	static final Color PANEL_LIGHT = new Color(24, 24, 24);
-	static final Color BORDER = new Color(60, 60, 60);
-	static final Color TEXT = new Color(230, 230, 230);
-	static final Color MUTED = new Color(168, 168, 168);
-	static final Color GOLD = new Color(255, 176, 0);
-	static final Color GREEN = new Color(128, 206, 82);
-	static final Color BLUE = new Color(82, 168, 214);
-	static final Color YELLOW = new Color(255, 207, 38);
-	static final Color RED = new Color(221, 83, 72);
-	private static final Color CONTROL_BASE = new Color(24, 24, 24);
-	private static final Color CONTROL_HOVER = new Color(34, 34, 34);
-	private static final Color CONTROL_PRESSED = new Color(18, 18, 18);
-	private static final Color CONTROL_SELECTED = new Color(48, 39, 20);
-	private static final Color BORDER_HOVER = new Color(118, 118, 118);
+	static final Color BACKGROUND = new Color(28, 29, 30);
+	static final Color PANEL = new Color(36, 36, 34);
+	static final Color PANEL_LIGHT = new Color(22, 23, 23);
+	static final Color BORDER = new Color(68, 66, 59);
+	static final Color TEXT = new Color(235, 232, 222);
+	static final Color MUTED = new Color(158, 153, 139);
+	static final Color GOLD = new Color(244, 181, 58);
+	static final Color GREEN = new Color(101, 222, 103);
+	static final Color BLUE = new Color(91, 178, 230);
+	static final Color YELLOW = new Color(230, 194, 72);
+	static final Color RED = new Color(224, 83, 76);
+	private static final Color CONTROL_BASE = new Color(20, 21, 21);
+	private static final Color CONTROL_HOVER = new Color(43, 43, 40);
+	private static final Color CONTROL_PRESSED = new Color(14, 15, 15);
+	private static final Color CONTROL_SELECTED = new Color(51, 38, 14);
+	private static final Color BORDER_HOVER = new Color(116, 107, 84);
 	private static final int SIDEBAR_WIDTH = 226;
+	private static final int INNER_WIDTH = 210;
 	private static final int CONTROL_HEIGHT = 34;
 	private static final int WRAP_WIDTH = 166;
-	private static final int TASK_TEXT_WIDTH = 112;
-	private static final int GEAR_TEXT_WIDTH = 74;
+	private static final int TASK_TEXT_WIDTH = 132;
+	private static final int GEAR_TEXT_WIDTH = 96;
 	private static final int ALTERNATIVE_TEXT_WIDTH = 68;
 	private static final int INVENTORY_ROW_HEIGHT = 34;
-	private static final int INVENTORY_MAX_VISIBLE_ROWS = 8;
 	private static final String COMBAT_ICON = "/asset-combat.png";
 	private static final String INVENTORY_ICON = "/asset-inventory.png";
 	private static final String WIKI_ICON = "/asset-wiki.png";
-	static final int CARD_RADIUS = 3;
-	static final int CONTROL_RADIUS = 3;
+	static final int CARD_RADIUS = 5;
+	static final int CONTROL_RADIUS = 4;
 	static final float FONT_XS = 13f;
 	static final float FONT_SM = 14f;
 	private static final float FONT_MD = 15f;
@@ -136,12 +136,14 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private final JLabel taskStatusLabel = new JLabel("No active task");
 	private final JLabel taskNameLabel = new JLabel("No Slayer task detected");
 	private final JLabel taskMetaLabel = new JLabel("Check your Slayer helmet or gem.");
+	private final JLabel taskProgressLabel = new JLabel();
 	private final JLabel taskIconLabel = new JLabel();
+	private final JProgressBar taskProgressBar = new JProgressBar();
 	private final JLabel targetLabel = new JLabel("No target selected");
 	private final JPanel targetCards = new JPanel(new CardLayout());
 	private final JComboBox<TargetOption> targetSelect = new JComboBox<>();
-	private final JPanel methodPanel = new JPanel(new GridLayout(1, 1, 4, 0));
-	private final JPanel loadoutPanel = new JPanel(new GridLayout(1, 2, 4, 0));
+	private final JPanel methodPanel = new JPanel(new GridLayout(1, 1, 3, 0));
+	private final JPanel loadoutPanel = new JPanel(new GridLayout(1, 2, 3, 0));
 	private final JButton openWikiButton = new JButton("Open Wiki Page");
 	private final List<CombatMethod> methodChoices = new ArrayList<>();
 	private final Timer skeletonTimer;
@@ -219,13 +221,17 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 			boolean activeTask = taskContext != null && taskContext.isActive();
 			String taskName = activeTask ? taskContext.getTaskName() : "No Slayer task detected";
 			String taskMeta = activeTask ? remainingText(taskContext) : "Check your Slayer helmet or gem.";
-			String taskRenderKey = activeTask + "|" + taskName + "|" + taskMeta + "|" + targetsKey(targets);
+			String progressText = activeTask ? progressText(taskContext) : "";
+			String taskRenderKey = activeTask + "|" + taskName + "|" + taskMeta + "|" + progressText + "|" + targetsKey(targets);
 			if (!taskRenderKey.equals(lastTaskRenderKey))
 			{
 				taskStatusLabel.setText(activeTask ? "Task detected" : "No active task");
 				taskStatusLabel.setForeground(activeTask ? GREEN : MUTED);
 				taskNameLabel.setText(wrapHtml(taskName, TASK_TEXT_WIDTH, false));
 				taskMetaLabel.setText(wrapHtml(taskMeta, TASK_TEXT_WIDTH, false));
+				taskProgressLabel.setText(progressText);
+				updateTaskProgress(taskContext);
+				fitHeight(taskCardPanel);
 				lastTaskRenderKey = taskRenderKey;
 			}
 			if (taskCardPanel != null)
@@ -250,12 +256,12 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				return;
 			}
 			displayedTaskImage = image;
-			taskIconLabel.setIcon(new ImageIcon(fitImage(image == null ? pluginIcon : image, 42, 42)));
+			taskIconLabel.setIcon(new ImageIcon(fitImage(image == null ? pluginIcon : image, 54, 54)));
 			refreshUi();
 		});
 	}
 
-	public void showLoading(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption target)
+	public void showLoading(List<TargetOption> targets, TargetOption target)
 	{
 		runOnEdt(() ->
 		{
@@ -299,6 +305,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private void buildBaseLayout()
 	{
 		pinnedPanel.removeAll();
+		pinnedPanel.setMaximumSize(new Dimension(INNER_WIDTH, Integer.MAX_VALUE));
 		pinnedPanel.add(headerPanel());
 		pinnedPanel.add(spacer(5));
 		taskCardPanel = taskCard();
@@ -306,6 +313,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		fitHeight(pinnedPanel);
 
 		body.removeAll();
+		body.setMaximumSize(new Dimension(INNER_WIDTH, Integer.MAX_VALUE));
 		body.add(controlsPanel());
 		body.add(spacer(5));
 		body.add(resultPanel);
@@ -332,7 +340,11 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		if (pluginIcon != null)
 		{
-			panel.add(new JLabel(new ImageIcon(pluginIcon)), BorderLayout.WEST);
+			JLabel icon = new JLabel(new ImageIcon(pluginIcon));
+			icon.setBorder(BorderFactory.createCompoundBorder(
+					BorderFactory.createLineBorder(new Color(85, 66, 31)),
+					BorderFactory.createEmptyBorder(2, 2, 2, 2)));
+			panel.add(icon, BorderLayout.WEST);
 		}
 
 		JPanel textPanel = verticalPanel(PANEL);
@@ -343,35 +355,51 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		textPanel.add(title);
 		textPanel.add(taskStatusLabel);
 		panel.add(textPanel, BorderLayout.CENTER);
+		panel.setBorder(BorderFactory.createCompoundBorder(
+				roundedBorder(new Color(82, 72, 49), CARD_RADIUS),
+				BorderFactory.createEmptyBorder(7, 7, 7, 7)));
 		fitHeight(panel);
 		return panel;
 	}
 
 	private JPanel taskCard()
 	{
-		JPanel panel = card(new BorderLayout(8, 0));
+		JPanel panel = card(new BorderLayout(0, 6));
 		JPanel row = new JPanel(new BorderLayout(8, 0));
 		row.setBackground(PANEL);
-		taskIconLabel.setIcon(new ImageIcon(fitImage(pluginIcon, 42, 42)));
+		taskIconLabel.setIcon(new ImageIcon(fitImage(pluginIcon, 54, 54)));
 		taskIconLabel.setHorizontalAlignment(SwingConstants.CENTER);
-		taskIconLabel.setPreferredSize(new Dimension(48, 48));
-		taskIconLabel.setBorder(BorderFactory.createLineBorder(new Color(48, 48, 48)));
+		taskIconLabel.setPreferredSize(new Dimension(60, 60));
+		taskIconLabel.setBorder(BorderFactory.createCompoundBorder(
+				roundedBorder(new Color(91, 73, 36), CONTROL_RADIUS),
+				BorderFactory.createEmptyBorder(3, 3, 3, 3)));
 		row.add(taskIconLabel, BorderLayout.WEST);
 
 		JPanel text = verticalPanel(PANEL);
-		JLabel caption = label("Current Task", MUTED, Font.PLAIN, FONT_XS);
+		JLabel caption = label("CURRENT TASK", GOLD, true, FONT_XS);
 		taskNameLabel.setForeground(TEXT);
 		taskNameLabel.setFont(taskNameLabel.getFont().deriveFont(Font.BOLD, FONT_TASK_TITLE));
 		taskNameLabel.setVerticalAlignment(SwingConstants.TOP);
 		taskMetaLabel.setForeground(MUTED);
 		taskMetaLabel.setFont(taskMetaLabel.getFont().deriveFont(Font.PLAIN, FONT_SM));
 		taskMetaLabel.setVerticalAlignment(SwingConstants.TOP);
+		taskProgressLabel.setForeground(BLUE);
+		taskProgressLabel.setFont(taskProgressLabel.getFont().deriveFont(Font.PLAIN, FONT_XS));
+		styleTaskProgressBar();
 		text.add(caption);
+		text.add(spacer(1));
 		text.add(taskNameLabel);
+		text.add(spacer(4));
+		text.add(taskProgressBar);
+		text.add(spacer(3));
 		text.add(taskMetaLabel);
+		text.add(taskProgressLabel);
 		row.add(text, BorderLayout.CENTER);
 
 		panel.add(row, BorderLayout.CENTER);
+		panel.setBorder(BorderFactory.createCompoundBorder(
+				roundedBorder(new Color(78, 67, 45), CARD_RADIUS),
+				BorderFactory.createEmptyBorder(8, 7, 8, 7)));
 		fitHeight(panel);
 		return panel;
 	}
@@ -380,6 +408,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	{
 		controlsPanel.removeAll();
 		controlsPanel.setBorder(compoundBorder());
+		controlsPanel.setBackground(PANEL);
 		targetBlock = controlRow(targetControlPanel());
 		methodBlock = controlRow(methodPanel);
 		loadoutBlock = controlRow(loadoutPanel);
@@ -402,7 +431,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		panel.setBackground(PANEL);
 		targetLabel.setForeground(TEXT);
 		targetLabel.setFont(targetLabel.getFont().deriveFont(Font.PLAIN, FONT_MD));
-		targetLabel.setBorder(controlBorder(false));
+		targetLabel.setBorder(controlBorder());
 		targetSelect.addActionListener(event ->
 		{
 			if (!rebuilding && targetSelect.getSelectedItem() instanceof TargetOption)
@@ -434,7 +463,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	{
 		JPanel footer = new JPanel(new BorderLayout());
 		footer.setBackground(BACKGROUND);
-		footer.setBorder(BorderFactory.createEmptyBorder(0, 8, 8, 8));
+		footer.setBorder(BorderFactory.createEmptyBorder(0, 8, 9, 8));
 
 		styledButton(openWikiButton);
 		openWikiButton.setIcon(wikiIcon);
@@ -539,7 +568,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		lastStateRenderKey = stateRenderKey;
 		resultPanel.removeAll();
 		JPanel state = card(new BorderLayout(0, 6));
-		state.add(label(title, GOLD, Font.BOLD, FONT_SM), BorderLayout.NORTH);
+		state.add(label(title, GOLD, true, FONT_SM), BorderLayout.NORTH);
 		JPanel lines = verticalPanel(PANEL);
 		lines.add(wrapped(message, TEXT));
 		if (detail != null && !detail.isEmpty())
@@ -562,17 +591,17 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 		JPanel state = card(new BorderLayout(0, 8));
 		state.setBorder(BorderFactory.createCompoundBorder(
-				roundedBorder(new Color(70, 70, 70), CARD_RADIUS),
-				BorderFactory.createEmptyBorder(12, 8, 12, 8)));
+				roundedBorder(new Color(78, 67, 45), CARD_RADIUS),
+				BorderFactory.createEmptyBorder(12, 7, 12, 7)));
 		JComponent icon = new NoSetupIcon();
 		icon.setAlignmentX(Component.CENTER_ALIGNMENT);
 		state.add(icon, BorderLayout.NORTH);
 
 		JPanel text = verticalPanel(PANEL);
-		JLabel title = label("No setup found", GOLD, Font.BOLD, FONT_XL);
+		JLabel title = label("No setup found", GOLD, true, FONT_XL);
 		title.setHorizontalAlignment(SwingConstants.CENTER);
 		title.setAlignmentX(Component.CENTER_ALIGNMENT);
-		JLabel message = centeredWrapped(currentResult.getMessage(), TEXT);
+		JLabel message = centeredWrapped(currentResult.getMessage());
 		message.setHorizontalAlignment(SwingConstants.CENTER);
 		message.setAlignmentX(Component.CENTER_ALIGNMENT);
 		text.add(title);
@@ -779,7 +808,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private JPanel statusLegend()
 	{
-		JPanel panel = new JPanel(new GridLayout(0, 2, 3, 3));
+		JPanel panel = card(new GridLayout(0, 2, 3, 3));
 		panel.setBackground(BACKGROUND);
 		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 		panel.add(statusChip("Equipped", OwnershipState.EQUIPPED));
@@ -793,13 +822,13 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private JPanel statusChip(String text, OwnershipState state)
 	{
-		return statusTextLabel(text, state, 88);
+		return statusTextLabel(text, state);
 	}
 
 
 	private String sectionSummary(int ready, int total)
 	{
-		return Math.max(0, ready) + "/" + Math.max(0, total) + " ready";
+		return Math.max(0, ready) + "/" + Math.max(0, total);
 	}
 
 	private int readyCount(List<GearMatch> matches)
@@ -843,7 +872,8 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private JPanel equipmentSection()
 	{
-		JPanel rows = verticalPanel(PANEL);
+		JPanel rows = verticalPanel(PANEL_LIGHT);
+		rows.setBorder(BorderFactory.createLineBorder(new Color(45, 45, 42)));
 		if (shouldShowBankDataHint())
 		{
 			rows.add(wrapped("Open your bank once to load owned gear.", YELLOW));
@@ -882,25 +912,25 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private JPanel emptyGearRow(GearSlot slot, int index)
 	{
-		Color rowBackground = index % 2 == 0 ? new Color(29, 29, 29) : new Color(24, 24, 24);
+		Color rowBackground = index % 2 == 0 ? new Color(25, 26, 25) : new Color(21, 22, 22);
 		JPanel wrapper = verticalPanel(rowBackground);
 		wrapper.setBorder(BorderFactory.createCompoundBorder(
 				BorderFactory.createMatteBorder(0, 0, 1, 0, BORDER),
 				BorderFactory.createEmptyBorder(0, 3, 0, 0)));
 
-		JPanel row = new JPanel(new BorderLayout(7, 0));
+		JPanel row = new JPanel(new BorderLayout(5, 0));
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 		row.setBackground(rowBackground);
-		row.setBorder(BorderFactory.createEmptyBorder(3, 0, 3, 0));
-		row.add(emptySlotIcon(slot, 30), BorderLayout.WEST);
+		row.setBorder(BorderFactory.createEmptyBorder(4, 2, 4, 3));
+		row.add(emptySlotIcon(slot), BorderLayout.WEST);
 
 		JPanel text = verticalPanel(rowBackground);
-		text.add(label(slot.displayName().toUpperCase(), MUTED, Font.BOLD, FONT_XS));
-		text.add(label("Empty", MUTED, Font.PLAIN, FONT_SM));
+		text.add(label(slot.displayName().toUpperCase(), MUTED, true, FONT_XS));
+		text.add(label("Empty", MUTED, false, FONT_SM));
 		row.add(text, BorderLayout.CENTER);
 
-		JLabel status = label("", MUTED, Font.BOLD, FONT_XS);
-		status.setPreferredSize(new Dimension(52, 20));
+		JLabel status = label("", MUTED, true, FONT_XS);
+		status.setPreferredSize(new Dimension(14, 20));
 		row.add(status, BorderLayout.EAST);
 		wrapper.add(row);
 		return wrapper;
@@ -909,7 +939,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private JPanel gearRow(GearMatch match, int index)
 	{
 		boolean missing = match.getOwnershipState() == OwnershipState.MISSING;
-		Color rowBackground = missing ? new Color(39, 25, 24) : index % 2 == 0 ? new Color(29, 29, 29) : new Color(24, 24, 24);
+		Color rowBackground = missing ? new Color(42, 25, 24) : index % 2 == 0 ? new Color(25, 26, 25) : new Color(21, 22, 22);
 
 		JPanel wrapper = new JPanel();
 		wrapper.setLayout(new BoxLayout(wrapper, BoxLayout.Y_AXIS));
@@ -919,20 +949,19 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				BorderFactory.createMatteBorder(0, missing ? 2 : 0, 1, 0, missing ? RED : BORDER),
 				BorderFactory.createEmptyBorder(0, missing ? 1 : 0, 0, 0)));
 
-		JPanel row = new JPanel(new BorderLayout(7, 0));
+		JPanel row = new JPanel(new BorderLayout(6, 0));
 		row.setAlignmentX(Component.LEFT_ALIGNMENT);
 		row.setBackground(rowBackground);
-		row.setBorder(BorderFactory.createEmptyBorder(3, 3, 3, 3));
+		row.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
 		row.add(itemIcon(match.getItem(), 30), BorderLayout.WEST);
 
 		JPanel text = verticalPanel(rowBackground);
-		text.add(label(match.getSlot().displayName().toUpperCase(Locale.ROOT), MUTED, Font.BOLD, FONT_XS));
+		text.add(label(match.getSlot().displayName().toUpperCase(Locale.ROOT), MUTED, true, FONT_XS));
 		String itemName = match.getItem() == null ? "Unknown item" : safeText(match.getItem().getName());
-		text.add(wrappedLabel(itemName, TEXT, Font.PLAIN, FONT_SM, GEAR_TEXT_WIDTH, false));
+		text.add(wrappedLabel(itemName, TEXT, FONT_SM, GEAR_TEXT_WIDTH, false));
 		row.add(text, BorderLayout.CENTER);
 
 		JPanel status = statusLabel(match.getOwnershipState());
-		status.setPreferredSize(new Dimension(52, 20));
 		row.add(status, BorderLayout.EAST);
 
 		wrapper.add(row);
@@ -944,7 +973,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 		row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		row.setToolTipText("Click to show alternatives. Double-click to open item wiki.");
-		Color hoverBackground = missing ? new Color(48, 30, 28) : new Color(37, 37, 37);
+		Color hoverBackground = missing ? new Color(53, 31, 28) : new Color(35, 35, 32);
 		Border normalBorder = wrapper.getBorder();
 		Border hoverBorder = BorderFactory.createCompoundBorder(
 				BorderFactory.createMatteBorder(0, 2, 1, 0, GOLD),
@@ -1003,8 +1032,10 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private JPanel alternativesPanel(GearMatch match)
 	{
-		JPanel panel = verticalPanel(PANEL_LIGHT);
-		panel.setBorder(BorderFactory.createEmptyBorder(4, 6, 6, 6));
+		JPanel panel = verticalPanel(new Color(18, 19, 19));
+		panel.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(50, 47, 40)),
+				BorderFactory.createEmptyBorder(4, 7, 6, 5)));
 		panel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		Set<String> seenItems = new LinkedHashSet<>();
@@ -1018,12 +1049,17 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				return;
 			}
 
-			for (GearTier tier : tiers)
+			List<GearTier> orderedTiers = new ArrayList<>(tiers);
+			orderedTiers.sort(Comparator.comparingInt(GearTier::getPriority));
+			boolean renderedAnyTier = false;
+			for (GearTier tier : orderedTiers)
 			{
 				if (tier == null || tier.getAlternatives() == null)
 				{
 					continue;
 				}
+
+				int itemsBeforeTier = panel.getComponentCount();
 
 				for (RecommendedItem item : tier.getAlternatives())
 				{
@@ -1040,19 +1076,19 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 					}
 
 					JPanel row = new JPanel(new BorderLayout(4, 0));
-					row.setBackground(PANEL_LIGHT);
-					row.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
+					row.setBackground(new Color(18, 19, 19));
+					row.setBorder(BorderFactory.createEmptyBorder(3, 2, 3, 2));
 					row.setAlignmentX(Component.LEFT_ALIGNMENT);
 
 					JPanel itemPanel = new JPanel(new BorderLayout(4, 0));
-					itemPanel.setBackground(PANEL_LIGHT);
+					itemPanel.setBackground(new Color(18, 19, 19));
 					itemPanel.add(itemIcon(item, 18), BorderLayout.WEST);
 					itemPanel.add(
-							wrappedLabel(safeText(item.getName()), TEXT, Font.PLAIN, FONT_XS, ALTERNATIVE_TEXT_WIDTH, false),
+							wrappedLabel(safeText(item.getName()), TEXT, FONT_XS, ALTERNATIVE_TEXT_WIDTH, false),
 							BorderLayout.CENTER);
 
 					row.add(itemPanel, BorderLayout.CENTER);
-					row.add(statusTextLabel(inventoryStatusText(state), state, 42), BorderLayout.EAST);
+					row.add(statusDotLabel(state), BorderLayout.EAST);
 
 					row.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 					row.setToolTipText("Double-click to open item wiki.");
@@ -1070,20 +1106,60 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 					panel.add(row);
 				}
+
+				if (panel.getComponentCount() > itemsBeforeTier)
+				{
+					if (renderedAnyTier)
+					{
+						panel.add(tierDivider(), itemsBeforeTier);
+					}
+					renderedAnyTier = true;
+				}
 			}
 		});
 
 		if (panel.getComponentCount() == 0)
 		{
 			JPanel emptyRow = new JPanel(new BorderLayout());
-			emptyRow.setBackground(PANEL_LIGHT);
+			emptyRow.setBackground(new Color(18, 19, 19));
 			emptyRow.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
-			emptyRow.add(label("No alternatives available.", MUTED, Font.PLAIN, FONT_XS), BorderLayout.CENTER);
+			emptyRow.add(label("No alternatives available.", MUTED, false, FONT_XS), BorderLayout.CENTER);
 			panel.add(emptyRow);
 		}
 
 		fitHeight(panel);
 		return panel;
+	}
+
+	private JComponent tierDivider()
+	{
+		JComponent divider = new JComponent()
+		{
+			{
+				setPreferredSize(new Dimension(1, 5));
+				setMinimumSize(new Dimension(1, 5));
+				setMaximumSize(new Dimension(Integer.MAX_VALUE, 5));
+			}
+
+			@Override
+			protected void paintComponent(java.awt.Graphics graphics)
+			{
+				super.paintComponent(graphics);
+				Graphics2D g = (Graphics2D) graphics.create();
+				try
+				{
+					int y = getHeight() / 2;
+					g.setColor(new Color(63, 55, 35));
+					g.drawLine(2, y, getWidth() - 2, y);
+				}
+				finally
+				{
+					g.dispose();
+				}
+			}
+		};
+		divider.setAlignmentX(Component.LEFT_ALIGNMENT);
+		return divider;
 	}
 
 
@@ -1104,6 +1180,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	{
 		JPanel inventoryBody = verticalPanel(PANEL);
 		JPanel rows = verticalPanel(PANEL_LIGHT);
+		rows.setBorder(BorderFactory.createLineBorder(new Color(45, 45, 42)));
 
 		List<InventoryRecommendation> rawRecommendations = currentResult.getStrategyMethod() == null
 				? Collections.emptyList()
@@ -1150,7 +1227,8 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 			}
 		}
 
-		inventoryBody.add(inventoryRowsScroll(rows, Math.max(1, visibleRecommendations.size())));
+		fitHeight(rows);
+		inventoryBody.add(rows);
 		inventoryBody.add(spacer(5));
 
 		String slotText = visibleCount + " / 28 recommended";
@@ -1158,7 +1236,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		{
 			slotText += " (" + (totalRecommendations - 28) + " overflow)";
 		}
-		inventoryBody.add(label(slotText, totalRecommendations > 28 ? RED : MUTED, Font.PLAIN, FONT_XS));
+		inventoryBody.add(label(slotText, totalRecommendations > 28 ? RED : MUTED, false, FONT_XS));
 		fitHeight(inventoryBody);
 
 		CollapsibleSection section = new CollapsibleSection(
@@ -1172,42 +1250,22 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		return section;
 	}
 
-	private JScrollPane inventoryRowsScroll(JPanel rows, int rowCount)
-	{
-		JScrollPane scrollPane = new JScrollPane(rows);
-		scrollPane.setBorder(BorderFactory.createLineBorder(BORDER));
-		scrollPane.setBackground(PANEL_LIGHT);
-		scrollPane.getViewport().setBackground(PANEL_LIGHT);
-		scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
-		scrollPane.setVerticalScrollBarPolicy(rowCount > INVENTORY_MAX_VISIBLE_ROWS
-				? JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED
-				: JScrollPane.VERTICAL_SCROLLBAR_NEVER);
-		scrollPane.getVerticalScrollBar().setUnitIncrement(INVENTORY_ROW_HEIGHT);
-		int visibleRows = Math.min(INVENTORY_MAX_VISIBLE_ROWS, Math.max(1, rowCount));
-		int height = visibleRows * INVENTORY_ROW_HEIGHT + 2;
-		Dimension size = new Dimension(1, height);
-		scrollPane.setPreferredSize(size);
-		scrollPane.setMinimumSize(size);
-		scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, height));
-		return scrollPane;
-	}
-
 	private JPanel inventoryRow(InventoryRecommendation recommendation, int index)
 	{
 		OwnershipState state = inventoryOwnership(recommendation);
 		String itemName = safeText(recommendation.getItemOrCategory());
 		RecommendedItem item = itemResolver.resolve(itemName);
-		Color rowBackground = index % 2 == 0 ? new Color(22, 22, 22) : new Color(18, 18, 18);
+		Color rowBackground = index % 2 == 0 ? new Color(25, 26, 25) : new Color(21, 22, 22);
 		if (state == OwnershipState.MISSING)
 		{
-			rowBackground = new Color(36, 22, 21);
+			rowBackground = new Color(42, 25, 24);
 		}
 
-		JPanel row = new JPanel(new BorderLayout(8, 0));
+		JPanel row = new JPanel(new BorderLayout(7, 0));
 		row.setBackground(rowBackground);
 		row.setBorder(BorderFactory.createCompoundBorder(
 				BorderFactory.createMatteBorder(0, state == OwnershipState.MISSING ? 2 : 0, 1, 0, state == OwnershipState.MISSING ? RED : BORDER),
-				BorderFactory.createEmptyBorder(2, state == OwnershipState.MISSING ? 4 : 6, 2, 6)));
+				BorderFactory.createEmptyBorder(3, state == OwnershipState.MISSING ? 4 : 6, 3, 5)));
 		row.setPreferredSize(new Dimension(1, INVENTORY_ROW_HEIGHT));
 		row.setMinimumSize(new Dimension(1, INVENTORY_ROW_HEIGHT));
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, INVENTORY_ROW_HEIGHT));
@@ -1216,13 +1274,13 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		row.setToolTipText(itemName + " - " + displayStatusText(state) + ". Double-click to open item wiki.");
 
 		row.add(itemIcon(item, 28), BorderLayout.WEST);
-		row.add(wrappedLabel(itemName, TEXT, Font.PLAIN, FONT_SM, 88, false), BorderLayout.CENTER);
+		row.add(wrappedLabel(itemName, TEXT, FONT_SM, 88, false), BorderLayout.CENTER);
 
 		JPanel meta = new JPanel(new BorderLayout(5, 0));
 		meta.setBackground(rowBackground);
-		meta.add(label("x " + Math.max(1, recommendation.getMinimumQuantity()), MUTED, Font.PLAIN, FONT_XS), BorderLayout.WEST);
-		meta.add(inventoryStateLabel(state), BorderLayout.CENTER);
-		meta.add(label(">", MUTED, Font.BOLD, FONT_SM), BorderLayout.EAST);
+		meta.add(label("x " + Math.max(1, recommendation.getMinimumQuantity()), MUTED, false, FONT_XS), BorderLayout.WEST);
+		meta.add(statusDotLabel(state), BorderLayout.CENTER);
+		meta.add(label(">", MUTED, true, FONT_SM), BorderLayout.EAST);
 		row.add(meta, BorderLayout.EAST);
 
 		row.addMouseListener(new MouseAdapter()
@@ -1246,30 +1304,33 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		row.setBorder(BorderFactory.createEmptyBorder(6, 6, 6, 6));
 		row.setPreferredSize(new Dimension(1, INVENTORY_ROW_HEIGHT));
 		row.setMaximumSize(new Dimension(Integer.MAX_VALUE, INVENTORY_ROW_HEIGHT));
-		row.add(label("No inventory recommendations parsed.", MUTED, Font.PLAIN, FONT_XS), BorderLayout.CENTER);
+		row.add(label("No inventory recommendations parsed.", MUTED, false, FONT_XS), BorderLayout.CENTER);
 		return row;
 	}
 
-	private JPanel inventoryStateLabel(OwnershipState state)
+	private JPanel statusDotLabel(OwnershipState state)
 	{
-		JPanel panel = new JPanel(new BorderLayout(3, 0));
+		JPanel panel = new JPanel(new BorderLayout());
 		panel.setOpaque(false);
-		panel.add(statusDot(state), BorderLayout.WEST);
-		panel.add(label(inventoryStatusText(state), statusColor(state), Font.PLAIN, FONT_XS), BorderLayout.CENTER);
+		panel.setToolTipText(displayStatusText(state));
+		panel.add(statusDot(state), BorderLayout.CENTER);
+		panel.setPreferredSize(new Dimension(14, 16));
+		panel.setMinimumSize(new Dimension(14, 16));
+		panel.setMaximumSize(new Dimension(14, 16));
 		return panel;
 	}
 
-	private JPanel statusTextLabel(String text, OwnershipState state, int width)
+	private JPanel statusTextLabel(String text, OwnershipState state)
 	{
 		JPanel panel = new JPanel(new BorderLayout(3, 0));
 		panel.setOpaque(false);
 		panel.setToolTipText(displayStatusText(state));
-		JLabel label = label(text, statusColor(state), Font.PLAIN, FONT_XS);
+		JLabel label = label(text, statusColor(state), false, FONT_XS);
 		panel.add(statusDot(state), BorderLayout.WEST);
 		panel.add(label, BorderLayout.CENTER);
-		panel.setPreferredSize(new Dimension(width, 16));
-		panel.setMinimumSize(new Dimension(width, 16));
-		panel.setMaximumSize(new Dimension(width, 16));
+		panel.setPreferredSize(new Dimension(88, 16));
+		panel.setMinimumSize(new Dimension(88, 16));
+		panel.setMaximumSize(new Dimension(88, 16));
 		return panel;
 	}
 
@@ -1292,6 +1353,8 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				try
 				{
 					g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+					g.setColor(new Color(8, 8, 8, 180));
+					g.fillOval(0, Math.max(0, (getHeight() - 10) / 2), 10, 10);
 					g.setColor(color);
 					g.fillOval(1, Math.max(1, (getHeight() - 8) / 2), 8, 8);
 				}
@@ -1301,32 +1364,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				}
 			}
 		};
-	}
-
-	private String inventoryStatusText(OwnershipState state)
-	{
-		if (state == OwnershipState.UNKNOWN && shouldShowBankDataHint())
-		{
-			return "Bank?";
-		}
-		if (state == null)
-		{
-			return "?";
-		}
-		switch (state)
-		{
-			case EQUIPPED:
-				return "Eqp";
-			case OWNED_IN_INVENTORY:
-				return "Inv";
-			case OWNED_IN_BANK:
-				return "Bank";
-			case MISSING:
-				return "Miss";
-			case UNKNOWN:
-			default:
-				return "?";
-		}
 	}
 
 	private void rebuildTargetControl(List<TargetOption> targets, boolean awaitSelection)
@@ -1417,7 +1454,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	{
 		methodPanel.removeAll();
 		methodPanel.setBackground(PANEL);
-		methodPanel.setLayout(new GridLayout(1, Math.max(1, methodChoices.size()), 4, 0));
+		methodPanel.setLayout(new GridLayout(1, Math.max(1, methodChoices.size()), 3, 0));
 		if (methodChoices.size() <= 1)
 		{
 			CombatMethod method = methodChoices.isEmpty() ? selectedMethod : methodChoices.get(0);
@@ -1515,10 +1552,64 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		}
 
 		String amount = taskContext.getRemainingAmount() > 0
-				? taskContext.getRemainingAmount() + " remaining"
+				? remainingAmountText(taskContext)
 				: "Remaining count unknown";
 		String location = safeText(taskContext.getAssignedLocation()).trim();
 		return location.isEmpty() ? amount : amount + " at " + location;
+	}
+
+	private String remainingAmountText(SlayerTaskContext taskContext)
+	{
+		int remaining = taskContext.getRemainingAmount();
+		int initial = taskContext.getInitialAmount();
+		if (remaining > 0 && remaining <= initial)
+		{
+			return remaining + " / " + initial + " remaining";
+		}
+		return remaining + " remaining";
+	}
+
+	private String progressText(SlayerTaskContext taskContext)
+	{
+		if (taskContext == null || taskContext.getInitialAmount() <= 0 || taskContext.getRemainingAmount() > taskContext.getInitialAmount())
+		{
+			return "";
+		}
+		int initial = taskContext.getInitialAmount();
+		int slain = Math.max(0, initial - taskContext.getRemainingAmount());
+		int percent = Math.round(slain * 100f / initial);
+		return slain + " slain (" + percent + "%)";
+	}
+
+	private void updateTaskProgress(SlayerTaskContext taskContext)
+	{
+		boolean showProgress = taskContext != null
+				&& taskContext.getInitialAmount() > 0
+				&& taskContext.getRemainingAmount() <= taskContext.getInitialAmount();
+		taskProgressBar.setVisible(showProgress);
+		taskProgressLabel.setVisible(showProgress);
+		if (!showProgress)
+		{
+			taskProgressBar.setValue(0);
+			taskProgressBar.setToolTipText(null);
+			return;
+		}
+
+		taskProgressBar.setMaximum(taskContext.getInitialAmount());
+		taskProgressBar.setValue(Math.max(0, taskContext.getInitialAmount() - taskContext.getRemainingAmount()));
+		taskProgressBar.setToolTipText(progressText(taskContext));
+	}
+
+	private void styleTaskProgressBar()
+	{
+		taskProgressBar.setStringPainted(false);
+		taskProgressBar.setBorder(BorderFactory.createLineBorder(new Color(55, 55, 55)));
+		taskProgressBar.setBackground(new Color(18, 18, 18));
+		taskProgressBar.setForeground(RED);
+		taskProgressBar.setPreferredSize(new Dimension(1, 9));
+		taskProgressBar.setMinimumSize(new Dimension(1, 9));
+		taskProgressBar.setMaximumSize(new Dimension(Integer.MAX_VALUE, 9));
+		taskProgressBar.setFocusable(false);
 	}
 
 	private OwnershipState inventoryOwnership(InventoryRecommendation recommendation)
@@ -1571,7 +1662,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private JPanel statusLabel(OwnershipState state)
 	{
-		return statusTextLabel(displayStatusText(state), state, 52);
+		return statusDotLabel(state);
 	}
 
 	private JLabel itemIcon(RecommendedItem item, int size)
@@ -1598,10 +1689,14 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		}
 
 		String itemName = item == null ? "" : safeText(item.getName()).trim();
-		JLabel fallback = label(itemName.isEmpty() ? "" : itemName.substring(0, 1).toUpperCase(Locale.ROOT), MUTED, Font.BOLD, FONT_XS);
+		JLabel fallback = label(itemName.isEmpty() ? "" : itemName.substring(0, 1).toUpperCase(Locale.ROOT), MUTED, true, FONT_XS);
 		fallback.setHorizontalAlignment(SwingConstants.CENTER);
 		fallback.setPreferredSize(new Dimension(size, size));
-		fallback.setBorder(BorderFactory.createLineBorder(BORDER));
+		fallback.setMinimumSize(new Dimension(size, size));
+		fallback.setMaximumSize(new Dimension(size, size));
+		fallback.setOpaque(true);
+		fallback.setBackground(new Color(18, 19, 19));
+		fallback.setBorder(BorderFactory.createLineBorder(new Color(55, 51, 42)));
 		loadWikiItemImage(item, size, image ->
 		{
 			fallback.setIcon(new ImageIcon(fitImage(image, size, size)));
@@ -1613,8 +1708,9 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		return fallback;
 	}
 
-	private JLabel emptySlotIcon(GearSlot slot, int size)
+	private JLabel emptySlotIcon(GearSlot slot)
 	{
+		int size = 30;
 		JLabel label = new JLabel();
 		label.setHorizontalAlignment(SwingConstants.CENTER);
 		label.setPreferredSize(new Dimension(size, size));
@@ -1660,12 +1756,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 			default:
 				return SpriteID.Wornicons.WEAPON;
 		}
-	}
-
-	private Image itemImage(RecommendedItem item, int size)
-	{
-		Integer itemId = resolveItemId(item);
-		return itemId == null ? null : itemManager.getImage(itemId);
 	}
 
 	private void loadWikiItemImage(RecommendedItem item, int size, Consumer<BufferedImage> callback)
@@ -1715,29 +1805,36 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		component.setMaximumSize(new Dimension(Integer.MAX_VALUE, preferred.height));
 	}
 
-	private JLabel label(String text, Color color, int style, float size)
+	private JLabel label(String text, Color color, boolean bold, float size)
 	{
 		JLabel label = new JLabel(text == null ? "" : text);
 		label.setForeground(color);
-		label.setFont(label.getFont().deriveFont(style, size));
+		if (bold)
+		{
+			label.setFont(label.getFont().deriveFont(Font.BOLD, size));
+		}
+		else
+		{
+			label.setFont(label.getFont().deriveFont(Font.PLAIN, size));
+		}
 		return label;
 	}
 
 	private JLabel wrapped(String text, Color color)
 	{
-		return label(wrapHtml(text, WRAP_WIDTH, false), color, Font.PLAIN, FONT_XS);
+		return label(wrapHtml(text, WRAP_WIDTH, false), color, false, FONT_XS);
 	}
 
-	private JLabel centeredWrapped(String text, Color color)
+	private JLabel centeredWrapped(String text)
 	{
-		JLabel label = wrappedLabel(text, color, Font.PLAIN, FONT_XS, WRAP_WIDTH, true);
+		JLabel label = wrappedLabel(text, TEXT, FONT_XS, WRAP_WIDTH, true);
 		label.setVerticalAlignment(SwingConstants.TOP);
 		return label;
 	}
 
-	private JLabel wrappedLabel(String text, Color color, int style, float size, int width, boolean centered)
+	private JLabel wrappedLabel(String text, Color color, float size, int width, boolean centered)
 	{
-		JLabel label = label(wrapHtml(text, width, centered), color, style, size);
+		JLabel label = label(wrapHtml(text, width, centered), color, false, size);
 		label.setVerticalAlignment(SwingConstants.TOP);
 		return label;
 	}
@@ -1769,7 +1866,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		button.setFocusPainted(false);
 		button.setOpaque(true);
 		button.setContentAreaFilled(true);
-		button.setBorder(controlBorder(false));
+		button.setBorder(controlBorder());
 		button.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		return button;
 	}
@@ -1821,7 +1918,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	{
 		boolean selected = selectedSupplier != null && selectedSupplier.getAsBoolean();
 		button.setBackground(pressed ? CONTROL_PRESSED : selected ? CONTROL_SELECTED : hover ? CONTROL_HOVER : CONTROL_BASE);
-		button.setForeground(selected || hover ? Color.WHITE : TEXT);
+		button.setForeground(selected ? GOLD : hover ? Color.WHITE : TEXT);
 		button.setBorder(controlBorder(selected, hover || pressed));
 		button.repaint();
 	}
@@ -1831,7 +1928,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		comboBox.setForeground(TEXT);
 		comboBox.setBackground(new Color(20, 20, 20));
 		comboBox.setFont(comboBox.getFont().deriveFont(Font.PLAIN, FONT_SM));
-		comboBox.setBorder(controlBorder(false));
+		comboBox.setBorder(controlBorder());
 		comboBox.setFocusable(false);
 		comboBox.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
 		comboBox.addMouseListener(new MouseAdapter()
@@ -1850,9 +1947,9 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		});
 	}
 
-	private Border controlBorder(boolean selected)
+	private Border controlBorder()
 	{
-		return controlBorder(selected, false);
+		return controlBorder(false, false);
 	}
 
 	private Border controlBorder(boolean selected, boolean hover)
@@ -1860,7 +1957,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		Color borderColor = selected ? GOLD : hover ? BORDER_HOVER : BORDER;
 		return BorderFactory.createCompoundBorder(
 				roundedBorder(borderColor, CONTROL_RADIUS),
-				BorderFactory.createEmptyBorder(4, 6, 4, 6));
+				BorderFactory.createEmptyBorder(4, 4, 4, 4));
 	}
 
 	private void setBackgroundRecursive(Component component, Color background)
@@ -1971,7 +2068,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private Border compoundBorder()
 	{
-		return BorderFactory.createCompoundBorder(roundedBorder(BORDER, CARD_RADIUS), BorderFactory.createEmptyBorder(7, 8, 7, 8));
+		return BorderFactory.createCompoundBorder(roundedBorder(BORDER, CARD_RADIUS), BorderFactory.createEmptyBorder(7, 6, 7, 6));
 	}
 
 	private Color statusColor(OwnershipState state)
@@ -2072,15 +2169,35 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private void refreshUi()
 	{
+		if (taskCardPanel != null && taskCardPanel.isVisible())
+		{
+			fitHeight(taskCardPanel);
+		}
 		fitHeight(pinnedPanel);
 		if (controlsPanel.isVisible())
 		{
 			fitHeight(controlsPanel);
 		}
+		updateCollapsibleSectionHeights(body);
 		resultPanel.revalidate();
 		body.revalidate();
 		revalidate();
 		repaint();
+	}
+
+	private void updateCollapsibleSectionHeights(Component component)
+	{
+		if (component instanceof CollapsibleSection)
+		{
+			((CollapsibleSection) component).updateHeight();
+		}
+		if (component instanceof Container)
+		{
+			for (Component child : ((Container) component).getComponents())
+			{
+				updateCollapsibleSectionHeights(child);
+			}
+		}
 	}
 
 }

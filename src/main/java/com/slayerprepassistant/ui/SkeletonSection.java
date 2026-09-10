@@ -7,7 +7,6 @@ import java.awt.Dimension;
 import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
-import java.awt.GridLayout;
 import java.awt.RenderingHints;
 import java.util.function.IntSupplier;
 import javax.swing.BorderFactory;
@@ -28,7 +27,7 @@ class SkeletonSection extends RoundedPanel
 
 		setBorder(BorderFactory.createCompoundBorder(
 				new RoundedBorder(SlayerPrepAssistantPanel.BORDER, SlayerPrepAssistantPanel.CARD_RADIUS),
-				BorderFactory.createEmptyBorder(7, 8, 7, 8)));
+				BorderFactory.createEmptyBorder(7, 6, 7, 6)));
 		setAlignmentX(Component.LEFT_ALIGNMENT);
 
 		JPanel header = new JPanel(new BorderLayout());
@@ -44,12 +43,13 @@ class SkeletonSection extends RoundedPanel
 
 	private JPanel skeletonEquipmentRows(int rows)
 	{
-		JPanel panel = verticalPanel(SlayerPrepAssistantPanel.PANEL);
+		JPanel panel = verticalPanel(SlayerPrepAssistantPanel.PANEL_LIGHT);
+		panel.setBorder(BorderFactory.createLineBorder(new Color(45, 45, 42)));
 		for (int i = 0; i < rows; i++)
 		{
-			JPanel row = new JPanel(new BorderLayout(7, 0));
-			row.setBackground(i % 2 == 0 ? new Color(29, 29, 29) : new Color(24, 24, 24));
-			row.setBorder(BorderFactory.createEmptyBorder(4, 3, 4, 0));
+			JPanel row = new JPanel(new BorderLayout(6, 0));
+			row.setBackground(i % 2 == 0 ? new Color(25, 26, 25) : new Color(21, 22, 22));
+			row.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
 			row.add(new SkeletonBlock(30, 30, frameSupplier), BorderLayout.WEST);
 
 			JPanel text = verticalPanel(row.getBackground());
@@ -57,7 +57,7 @@ class SkeletonSection extends RoundedPanel
 			text.add(Box.createVerticalStrut(4));
 			text.add(new SkeletonBlock(i % 3 == 0 ? 96 : 120, 10, frameSupplier));
 			row.add(text, BorderLayout.CENTER);
-			row.add(new SkeletonBlock(42, 10, frameSupplier), BorderLayout.EAST);
+			row.add(new SkeletonBlock(10, 10, frameSupplier), BorderLayout.EAST);
 			panel.add(row);
 		}
 		return panel;
@@ -65,14 +65,18 @@ class SkeletonSection extends RoundedPanel
 
 	private JPanel skeletonInventoryRows(int rows)
 	{
-		JPanel panel = verticalPanel(SlayerPrepAssistantPanel.PANEL);
-		JPanel grid = new JPanel(new GridLayout(0, 4, 5, 5));
-		grid.setBackground(SlayerPrepAssistantPanel.PANEL);
-		for (int i = 0; i < rows * 4; i++)
+		JPanel panel = verticalPanel(SlayerPrepAssistantPanel.PANEL_LIGHT);
+		panel.setBorder(BorderFactory.createLineBorder(new Color(45, 45, 42)));
+		for (int i = 0; i < Math.max(1, rows); i++)
 		{
-			grid.add(new SkeletonBlock(42, 42, frameSupplier));
+			JPanel row = new JPanel(new BorderLayout(7, 0));
+			row.setBackground(i % 2 == 0 ? new Color(25, 26, 25) : new Color(21, 22, 22));
+			row.setBorder(BorderFactory.createEmptyBorder(4, 6, 4, 5));
+			row.add(new SkeletonBlock(28, 28, frameSupplier), BorderLayout.WEST);
+			row.add(new SkeletonBlock(i % 2 == 0 ? 92 : 110, 10, frameSupplier), BorderLayout.CENTER);
+			row.add(new SkeletonBlock(10, 10, frameSupplier), BorderLayout.EAST);
+			panel.add(row);
 		}
-		panel.add(grid);
 		return panel;
 	}
 
@@ -110,7 +114,6 @@ class SkeletonSection extends RoundedPanel
 
 	private static class SkeletonBlock extends JComponent
 	{
-		private final int radius = SlayerPrepAssistantPanel.CONTROL_RADIUS;
 		private final IntSupplier frameSupplier;
 
 		SkeletonBlock(int preferredWidth, int preferredHeight, IntSupplier frameSupplier)
@@ -147,11 +150,12 @@ class SkeletonSection extends RoundedPanel
 
 				int frame = frameSupplier.getAsInt();
 				int pulse = Math.abs(6 - frame);
-				int shade = 30 + pulse * 3;
-				g.setColor(new Color(shade, shade, shade));
+				int shade = 31 + pulse * 3;
+				int radius = SlayerPrepAssistantPanel.CONTROL_RADIUS;
+				g.setColor(new Color(shade, shade, Math.max(24, shade - 5)));
 				g.fillRoundRect(0, 0, width, height, radius, radius);
 
-				g.setColor(new Color(58, 58, 58, 80));
+				g.setColor(new Color(100, 86, 52, 70));
 				int shimmerX = (frame * (width + 16) / 12) - 16;
 				g.fillRoundRect(shimmerX, 0, Math.max(8, width / 3), height, radius, radius);
 			}

@@ -8,7 +8,7 @@ import org.junit.Test;
 
 public class TaskTargetResolverTest
 {
-	private final TaskTargetResolver resolver = new TaskTargetResolver(new TaskResolutionOverrides());
+	private final TaskTargetResolver resolver = new TaskTargetResolver();
 
 	@Test
 	public void taskResolvesToSingleWikiCandidateUntilVariantsAreParsed()

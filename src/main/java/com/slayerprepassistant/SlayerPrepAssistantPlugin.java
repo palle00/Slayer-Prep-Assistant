@@ -2,23 +2,24 @@ package com.slayerprepassistant;
 
 import com.google.gson.Gson;
 import com.google.inject.Provides;
-import com.slayerprepassistant.bank.BankSnapshotService;
-import com.slayerprepassistant.bank.PlayerInventoryState;
+import com.slayerprepassistant.bank.PlayerStateTracker;
 import com.slayerprepassistant.gear.LoadoutMode;
 import com.slayerprepassistant.gear.RecommendedItem;
 import com.slayerprepassistant.guide.CombatMethod;
 import com.slayerprepassistant.guide.MonsterGuide;
 import com.slayerprepassistant.items.ItemResolver;
+import com.slayerprepassistant.items.RuneLiteItemLookup;
 import com.slayerprepassistant.prep.PreparationEngine;
 import com.slayerprepassistant.prep.PreparationResult;
 import com.slayerprepassistant.prep.PreparationStatus;
 import com.slayerprepassistant.task.SlayerTaskContext;
 import com.slayerprepassistant.task.SlayerTaskService;
 import com.slayerprepassistant.task.TargetOption;
-import com.slayerprepassistant.task.TaskResolutionOverrides;
 import com.slayerprepassistant.task.TaskTargetResolver;
 import com.slayerprepassistant.ui.SlayerPrepAssistantPanel;
 import com.slayerprepassistant.wiki.WikiClient;
+import com.slayerprepassistant.wiki.WikiImageService;
+import com.slayerprepassistant.wiki.WikiPageCandidates;
 import com.slayerprepassistant.wiki.WikiParsingResult;
 import com.slayerprepassistant.wiki.WikiSetupLoader;
 import com.slayerprepassistant.wiki.WikiStrategyParser;
@@ -27,15 +28,10 @@ import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.OptionalInt;
-import java.util.Set;
-import java.util.TreeMap;
-import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.imageio.ImageIO;
@@ -45,7 +41,6 @@ import javax.swing.SwingUtilities;
 import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
-import net.runelite.api.ItemContainer;
 import net.runelite.api.MenuAction;
 import net.runelite.api.NPC;
 import net.runelite.api.NPCComposition;
@@ -66,7 +61,6 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.game.ItemVariationMapping;
 import net.runelite.client.events.ConfigChanged;
-import net.runelite.http.api.item.ItemPrice;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.ui.ClientToolbar;
@@ -109,11 +103,9 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	@Inject
 	private ItemManager itemManager;
 
-	private final BankSnapshotService bankSnapshotService = new BankSnapshotService();
+	private final PlayerStateTracker playerStateTracker = new PlayerStateTracker();
 	private final WikiStrategyParser wikiStrategyParser = new WikiStrategyParser();
-	private final Map<String, BufferedImage> wikiImageCache = new HashMap<>();
 	private final Map<String, String> preferredStrategyPageByTarget = new HashMap<>();
-	private final Map<String, OptionalInt> priceCache = new HashMap<>();
 	private TaskTargetResolver targetResolver;
 	private PreparationEngine preparationEngine;
 	private SlayerTaskService slayerTaskService;
@@ -122,14 +114,14 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	private SlayerTaskContext currentTask = SlayerTaskContext.none();
 	private List<TargetOption> currentTargets = new ArrayList<>();
 	private TargetOption selectedTarget;
-	private PlayerInventoryState playerState = PlayerInventoryState.unknownBank();
 	private WikiClient wikiClient;
+	private WikiImageService wikiImageService;
 	private WikiSetupLoader wikiSetupLoader;
 	private ItemResolver itemResolver;
+	private RuneLiteItemLookup itemLookup;
 	private int wikiRequestId;
 	private String lastTaskKey = "";
 	private String lastTaskDisplayKey = "";
-	private String lastPlayerStateKey = "";
 	private String lastPreparationRequestKey = "";
 	private String visibleSetupTargetKey = "";
 
@@ -137,12 +129,14 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	protected void startUp()
 	{
 		itemResolver = new ItemResolver();
-		targetResolver = new TaskTargetResolver(new TaskResolutionOverrides());
+		itemLookup = new RuneLiteItemLookup(itemManager);
+		targetResolver = new TaskTargetResolver();
 		preparationEngine = new PreparationEngine(itemResolver, this::priceFor);
-		slayerTaskService = new SlayerTaskService(configManager);
+		slayerTaskService = new SlayerTaskService();
 		wikiClient = new WikiClient(okHttpClient, gson);
+		wikiImageService = new WikiImageService(wikiClient, config::useWikiStrategyData);
 		wikiSetupLoader = new WikiSetupLoader(wikiClient, wikiStrategyParser, clientThread::invoke);
-		panel = new SlayerPrepAssistantPanel(this::selectTarget, this::refreshPreparation, this::loadWikiImage, itemManager, itemResolver, createIcon(32));
+		panel = new SlayerPrepAssistantPanel(this::selectTarget, this::refreshPreparation, wikiImageService::load, itemManager, itemResolver, itemLookup, createIcon(32));
 		navigationButton = NavigationButton.builder()
 			.tooltip("Slayer Prep Assistant")
 			.icon(createIcon(16))
@@ -201,7 +195,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		}
 		if (containerId == InventoryID.BANK)
 		{
-			bankSnapshotService.updateFromBankContainer(event.getItemContainer(), client);
+			playerStateTracker.updateBank(event.getItemContainer(), client);
 		}
 		if (updatePlayerStateOnClientThread())
 		{
@@ -337,10 +331,9 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			return;
 		}
 		lastPreparationRequestKey = preparationRequestKey;
-		PreparationResult result = preparationEngine.prepare(currentTask, currentTargets, selectedTarget, method, mode, playerState);
-		if (result.getStatus() == PreparationStatus.SETUP_READY || !config.useWikiStrategyData())
+		if (!config.useWikiStrategyData())
 		{
-			showPreparation(result);
+			showPreparation(PreparationResult.noSetup(currentTask, currentTargets, selectedTarget, "No setup found."));
 			return;
 		}
 		loadWikiStrategy(selectedTarget, method, mode);
@@ -350,7 +343,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 	{
 		if (result != null && result.getStatus() == PreparationStatus.SETUP_READY)
 		{
-			visibleSetupTargetKey = targetKey(result.getSelectedTarget());
+			visibleSetupTargetKey = TargetOption.lookupKey(result.getSelectedTarget());
 		}
 		else
 		{
@@ -361,7 +354,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 
 	private boolean hasVisibleSetupFor(TargetOption target)
 	{
-		return !visibleSetupTargetKey.isEmpty() && visibleSetupTargetKey.equals(targetKey(target));
+		return !visibleSetupTargetKey.isEmpty() && visibleSetupTargetKey.equals(TargetOption.lookupKey(target));
 	}
 
 	@Subscribe
@@ -376,7 +369,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		{
 			return;
 		}
-		client.createMenuEntry(-1)
+		client.getMenu().createMenuEntry(-1)
 			.setOption(SLAYER_GUIDE_MENU_OPTION)
 			.setTarget(event.getTarget())
 			.setType(MenuAction.RUNELITE)
@@ -440,8 +433,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		}
 		NPCComposition composition = npc.getTransformedComposition();
 		String name = composition == null ? npc.getName() : composition.getName();
-		Integer combatLevel = composition == null ? npc.getCombatLevel() : composition.getCombatLevel();
-		TargetOption target = enemyTarget(name, combatLevel);
+		TargetOption target = enemyTarget(name);
 		currentTask = new SlayerTaskContext(target.getDisplayName(), 0, 0, "Clicked enemy", true);
 		currentTargets = new ArrayList<>(java.util.Collections.singletonList(target));
 		selectedTarget = target;
@@ -456,10 +448,10 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		refreshPreparation();
 	}
 
-	private TargetOption enemyTarget(String npcName, Integer combatLevel)
+	private TargetOption enemyTarget(String npcName)
 	{
 		String title = WikiTitles.wikiTitle(npcName);
-		return new TargetOption(title, npcName, title, "Strategies/" + title, combatLevel, null, "Wiki-derived enemy lookup", true);
+		return new TargetOption(title, title, "Strategies/" + title);
 	}
 
 	private void loadWikiStrategy(TargetOption target, CombatMethod method, LoadoutMode mode)
@@ -485,10 +477,10 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			return true;
 		}
 		MonsterGuide guide = parsed.getGuide();
-		PreparationResult wikiResult = preparationEngine.prepareGuide(currentTask, currentTargets, target, guide, method, mode, playerState);
+		PreparationResult wikiResult = preparationEngine.prepareGuide(currentTask, currentTargets, target, guide, method, mode, playerStateTracker.getState());
 		if (wikiResult.getStatus() == PreparationStatus.SETUP_READY)
 		{
-			preferredStrategyPageByTarget.put(targetKey(target), parsed.getGuide().getWikiTitle());
+			preferredStrategyPageByTarget.put(TargetOption.lookupKey(target), parsed.getGuide().getWikiTitle());
 			showPreparation(wikiResult);
 			return true;
 		}
@@ -500,7 +492,7 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		wikiSetupLoader.loadVariantPage(
 			requestId,
 			target,
-			variantPageCandidates(target),
+			WikiPageCandidates.variantPages(target),
 			this::isStaleWikiRequest,
 			parsed -> handleVariantsParse(requestId, target, parsed),
 			() -> showPreparation(PreparationResult.noSetup(currentTask, currentTargets, target, "A usable strategy setup could not be found for this monster.")));
@@ -596,39 +588,24 @@ public class SlayerPrepAssistantPlugin extends Plugin
 		{
 			return false;
 		}
-		PreparationResult result = preparationEngine.prepareGuide(currentTask, currentTargets, target, parsed.getGuide(), CombatMethod.GENERAL, LoadoutMode.BEST_I_OWN, playerState);
+		PreparationResult result = preparationEngine.prepareGuide(currentTask, currentTargets, target, parsed.getGuide(), CombatMethod.defaultMethod(), LoadoutMode.BEST_I_OWN, playerStateTracker.getState());
 		return result.getStatus() == PreparationStatus.SETUP_READY;
 	}
 
 	private boolean updatePlayerStateOnClientThread()
 	{
-		ItemContainer equipment = client.getItemContainer(InventoryID.WORN);
-		ItemContainer inventory = client.getItemContainer(InventoryID.INV);
-		PlayerInventoryState nextPlayerState = new PlayerInventoryState(
-			BankSnapshotService.toQuantities(equipment),
-			BankSnapshotService.toQuantities(inventory),
-			BankSnapshotService.toNames(equipment, client),
-			BankSnapshotService.toNames(inventory, client),
-			bankSnapshotService.getSnapshot());
-		String nextPlayerStateKey = playerStateKey(nextPlayerState);
-		if (nextPlayerStateKey.equals(lastPlayerStateKey))
-		{
-			return false;
-		}
-		playerState = nextPlayerState;
-		lastPlayerStateKey = nextPlayerStateKey;
-		return true;
+		return playerStateTracker.update(client);
 	}
 
 	private String preparationRequestKey(CombatMethod method, LoadoutMode mode)
 	{
 		return taskKey(currentTask)
-			+ "|" + targetKey(selectedTarget)
+			+ "|" + TargetOption.lookupKey(selectedTarget)
 			+ "|" + method
 			+ "|" + mode
 			+ "|wiki=" + config.useWikiStrategyData()
 			+ "|price=" + config.useWikiPriceData()
-			+ "|" + lastPlayerStateKey;
+			+ "|" + playerStateTracker.getStateKey();
 	}
 
 	private String taskKey(SlayerTaskContext task)
@@ -654,81 +631,18 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			+ "|" + task.getAssignedLocation();
 	}
 
-	private String targetKey(TargetOption target)
-	{
-		if (target == null)
-		{
-			return "";
-		}
-		return target.getDisplayName()
-			+ "|" + target.getWikiPage()
-			+ "|" + target.getStrategyPage();
-	}
-
-	private String playerStateKey(PlayerInventoryState state)
-	{
-		return Objects.toString(new TreeMap<>(state.getEquipment()))
-			+ "|" + Objects.toString(new TreeMap<>(state.getInventory()))
-			+ "|" + Objects.toString(new TreeSet<>(state.getEquipmentNames()))
-			+ "|" + Objects.toString(new TreeSet<>(state.getInventoryNames()))
-			+ "|bankKnown=" + state.getBankSnapshot().isKnown()
-			+ "|" + Objects.toString(new TreeMap<>(state.getBankSnapshot().getQuantitiesById()))
-			+ "|" + Objects.toString(new TreeSet<>(state.getBankSnapshot().getItemNames()));
-	}
-
 	private OptionalInt priceFor(RecommendedItem item)
 	{
 		if (!config.useWikiPriceData() || item == null || item.getName().trim().isEmpty())
 		{
 			return OptionalInt.empty();
 		}
-		String normalizedName = ItemResolver.normalize(item.getName());
-		OptionalInt cached = priceCache.get(normalizedName);
-		if (cached != null)
-		{
-			return cached;
-		}
-		try
-		{
-			for (ItemPrice itemPrice : itemManager.search(item.getName()))
-			{
-				if (ItemResolver.normalize(itemPrice.getName()).equals(normalizedName))
-				{
-					int price = itemPrice.getWikiPrice() > 0 ? itemPrice.getWikiPrice() : itemPrice.getPrice();
-					OptionalInt result = price > 0 ? OptionalInt.of(price) : OptionalInt.empty();
-					priceCache.put(normalizedName, result);
-					return result;
-				}
-			}
-		}
-		catch (RuntimeException ex)
-		{
-			log.debug("Unable to resolve Wiki price for {}", item.getName(), ex);
-		}
-		priceCache.put(normalizedName, OptionalInt.empty());
-		return OptionalInt.empty();
+		return itemLookup.wikiPrice(item);
 	}
 
 	private List<String> strategyPageCandidates(TargetOption target)
 	{
-		Set<String> candidates = new LinkedHashSet<>();
-		addStrategyCandidate(candidates, preferredStrategyPageByTarget.get(targetKey(target)));
-		String wikiPage = target.getWikiPage();
-		String singular = WikiTitles.singularTitle(wikiPage);
-		addStrategyCandidate(candidates, target.getStrategyPage());
-		addStrategyCandidate(candidates, "Strategies/" + wikiPage);
-		addStrategyCandidate(candidates, wikiPage + "/Strategies");
-		addStrategyCandidate(candidates, "Strategies/" + singular);
-		addStrategyCandidate(candidates, singular + "/Strategies");
-		return new ArrayList<>(candidates);
-	}
-
-	private void addStrategyCandidate(Set<String> candidates, String pageTitle)
-	{
-		if (pageTitle != null && !pageTitle.trim().isEmpty())
-		{
-			candidates.add(pageTitle.trim());
-		}
+		return WikiPageCandidates.strategyPages(target, preferredStrategyPageByTarget.get(TargetOption.lookupKey(target)));
 	}
 
 	private void loadTaskImage(TargetOption target)
@@ -739,59 +653,13 @@ public class SlayerPrepAssistantPlugin extends Plugin
 			return;
 		}
 		String title = target.getWikiPage();
-		loadWikiImage(title, 48, image -> clientThread.invoke(() ->
+		wikiImageService.load(title, 48, image -> clientThread.invoke(() ->
 		{
 			if (target.equals(selectedTarget))
 			{
 				panel.setTaskImage(image);
 			}
 		}));
-	}
-
-	private void loadWikiImage(String title, int size, Consumer<BufferedImage> callback)
-	{
-		if (!config.useWikiStrategyData() || title == null || title.trim().isEmpty())
-		{
-			callback.accept(null);
-			return;
-		}
-		String key = title.trim().toLowerCase(java.util.Locale.ROOT) + "|" + size;
-		BufferedImage cached = wikiImageCache.get(key);
-		if (cached != null)
-		{
-			callback.accept(cached);
-			return;
-		}
-		wikiClient.fetchPageImage(title, size, image ->
-		{
-			if (image != null)
-			{
-				wikiImageCache.put(key, image);
-			}
-			callback.accept(image);
-		});
-	}
-
-	private List<String> variantPageCandidates(TargetOption target)
-	{
-		Set<String> candidates = new LinkedHashSet<>();
-		addVariantCandidates(candidates, target.getWikiPage());
-		addVariantCandidates(candidates, WikiTitles.singularTitle(target.getWikiPage()));
-		return new ArrayList<>(candidates);
-	}
-
-	private void addVariantCandidates(Set<String> candidates, String pageTitle)
-	{
-		if (pageTitle == null || pageTitle.trim().isEmpty())
-		{
-			return;
-		}
-		String cleaned = pageTitle.trim();
-		candidates.add(cleaned);
-		if (!cleaned.startsWith("Slayer_task/"))
-		{
-			candidates.add("Slayer_task/" + cleaned);
-		}
 	}
 
 	private BufferedImage createIcon(int size)

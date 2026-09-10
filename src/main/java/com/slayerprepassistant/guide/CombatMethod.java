@@ -2,10 +2,14 @@ package com.slayerprepassistant.guide;
 
 public enum CombatMethod
 {
-	GENERAL,
 	MELEE,
 	RANGED,
 	MAGIC;
+
+	public static CombatMethod defaultMethod()
+	{
+		return MELEE;
+	}
 
 	@Override
 	public String toString()

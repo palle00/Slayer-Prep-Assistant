@@ -7,13 +7,13 @@ import com.slayerprepassistant.gear.RecommendedItem;
 import com.slayerprepassistant.guide.CombatMethod;
 import com.slayerprepassistant.guide.InventoryRecommendation;
 import com.slayerprepassistant.guide.MonsterGuide;
-import com.slayerprepassistant.guide.QuantityMode;
 import com.slayerprepassistant.guide.StrategyMethod;
 import com.slayerprepassistant.model.ParsingConfidence;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -25,14 +25,7 @@ public class WikiStrategyParser
 	private static final Pattern WIKI_HEADING = Pattern.compile("^=+\\s*(.+?)\\s*=+$");
 	private static final Pattern WIKI_LINK = Pattern.compile("\\[\\[([^\\]|#]+)(?:#[^\\]|]+)?(?:\\|([^\\]]+))?\\]\\]");
 	private static final Pattern TEMPLATE_LINK = Pattern.compile("\\{\\{\\s*[Pp]link\\s*\\|\\s*([^\\}|]+)(?:\\|[^\\}]*)?\\}\\}");
-	private static final Pattern SLOT_RANK = Pattern.compile("^\\|?\\s*[A-Za-z ]+(\\d+)\\s*$");
-	private static final Pattern TABBER_TAB = Pattern.compile("<div class=\"tabbertab\"[^>]*data-title=\"([^\"]+)\"[^>]*>(.*?)(?=<div class=\"tabbertab\"|</div></div>\\s*<!--|$)", Pattern.DOTALL);
-	private static final Pattern EQUIPMENT_TABLE = Pattern.compile("<table class=\"equipment equipment-right\"[^>]*>(.*?)</table>", Pattern.DOTALL);
-	private static final Pattern INVENTORY_TABLE = Pattern.compile("<table class=\"inventorytable storage-right\"[^>]*>(.*?)</table>", Pattern.DOTALL);
-	private static final Pattern EQUIPMENT_SLOT_START = Pattern.compile("<div class=\"equipment-(head|cape|neck|ammo|weapon|body|shield|legs|hands|feet|ring)[^\"]*\">", Pattern.DOTALL);
-	private static final Pattern HTML_LINK = Pattern.compile("<a\\s+([^>]*)>", Pattern.DOTALL);
-	private static final Pattern HTML_HREF = Pattern.compile("href=\"/w/([^\"]+)\"");
-	private static final Pattern HTML_TITLE = Pattern.compile("title=\"([^\"]+)\"");
+	private final RenderedStrategyParser renderedStrategyParser = new RenderedStrategyParser();
 
 	public WikiParsingResult parse(String monsterName, String wikiTitle, String wikiUrl, long revisionId, String text)
 	{
@@ -42,18 +35,37 @@ public class WikiStrategyParser
 		{
 			methodLines.put(method, new ArrayList<>());
 		}
-		List<InventoryRecommendation> inventory = new ArrayList<>();
+		List<InventoryRecommendation> sharedInventory = new ArrayList<>();
+		Map<CombatMethod, List<InventoryRecommendation>> methodInventory = new EnumMap<>(CombatMethod.class);
+		for (CombatMethod method : CombatMethod.values())
+		{
+			methodInventory.put(method, new ArrayList<>());
+		}
 		List<String> notes = new ArrayList<>();
 		List<MonsterVariant> variants = new ArrayList<>();
 		List<CombatMethod> methodOrder = new ArrayList<>();
+		List<String> inventoryTemplateLines = new ArrayList<>();
+		CombatMethod inventoryTemplateMethod = CombatMethod.defaultMethod();
+		boolean collectingInventoryTemplate = false;
 
 		String section = "general";
-		CombatMethod currentMethod = CombatMethod.GENERAL;
+		CombatMethod currentMethod = CombatMethod.defaultMethod();
 		for (String rawLine : text.split("\\R"))
 		{
 			String line = rawLine.trim();
 			if (line.isEmpty())
 			{
+				continue;
+			}
+			if (collectingInventoryTemplate)
+			{
+				inventoryTemplateLines.add(line);
+				if (isTemplateEnd(line))
+				{
+					methodInventory.get(inventoryTemplateMethod).addAll(parseInventoryTemplate(inventoryTemplateLines));
+					inventoryTemplateLines.clear();
+					collectingInventoryTemplate = false;
+				}
 				continue;
 			}
 			String heading = heading(line);
@@ -77,13 +89,28 @@ public class WikiStrategyParser
 				section = "equipment";
 				continue;
 			}
+			if (isInventoryTemplateStart(line))
+			{
+				inventoryTemplateMethod = currentMethod;
+				inventoryTemplateLines.add(line);
+				if (isTemplateEnd(line))
+				{
+					methodInventory.get(inventoryTemplateMethod).addAll(parseInventoryTemplate(inventoryTemplateLines));
+					inventoryTemplateLines.clear();
+				}
+				else
+				{
+					collectingInventoryTemplate = true;
+				}
+				continue;
+			}
 			if ("variants".equals(section))
 			{
 				parseVariants(line, variants);
 			}
 			else if ("inventory".equals(section))
 			{
-				inventory.add(new InventoryRecommendation(stripBullet(line), QuantityMode.UNSPECIFIED, 0, 0, true, "", Collections.emptyList()));
+				sharedInventory.add(new InventoryRecommendation(stripBullet(line), 0, true));
 			}
 			else if ("equipment".equals(section) || "method".equals(section))
 			{
@@ -101,7 +128,7 @@ public class WikiStrategyParser
 			List<GearRecommendation> gear = parseGear(methodLines.get(method));
 			if (!gear.isEmpty())
 			{
-				methods.add(new StrategyMethod(method, gear, inventory, notes, ParsingConfidence.MEDIUM));
+				methods.add(new StrategyMethod(method, gear, inventoryForMethod(method, methodInventory, sharedInventory), notes, ParsingConfidence.MEDIUM));
 			}
 		}
 		for (Map.Entry<CombatMethod, List<String>> entry : methodLines.entrySet())
@@ -113,7 +140,7 @@ public class WikiStrategyParser
 			List<GearRecommendation> gear = parseGear(entry.getValue());
 			if (!gear.isEmpty())
 			{
-				methods.add(new StrategyMethod(entry.getKey(), gear, inventory, notes, ParsingConfidence.MEDIUM));
+				methods.add(new StrategyMethod(entry.getKey(), gear, inventoryForMethod(entry.getKey(), methodInventory, sharedInventory), notes, ParsingConfidence.MEDIUM));
 			}
 		}
 		if (methods.isEmpty())
@@ -127,241 +154,126 @@ public class WikiStrategyParser
 
 	public WikiParsingResult mergeRenderedHtml(WikiParsingResult source, String renderedHtml)
 	{
-		if (source == null || renderedHtml == null || renderedHtml.isEmpty())
-		{
-			return source;
-		}
-		List<StrategyMethod> htmlMethods = parseRenderedMethods(renderedHtml);
-		if (htmlMethods.isEmpty())
-		{
-			return source;
-		}
-		List<StrategyMethod> mergedMethods = new ArrayList<>();
-		for (StrategyMethod sourceMethod : source.getGuide().getMethods())
-		{
-			StrategyMethod htmlMethod = findMethod(htmlMethods, sourceMethod.getMethod());
-			if (htmlMethod == null)
-			{
-				mergedMethods.add(sourceMethod);
-				continue;
-			}
-			mergedMethods.add(new StrategyMethod(
-				sourceMethod.getMethod(),
-				mergeMaxGear(htmlMethod.getGear(), sourceMethod.getGear()),
-				htmlMethod.getInventory().isEmpty() ? sourceMethod.getInventory() : htmlMethod.getInventory(),
-				sourceMethod.getNotes(),
-				sourceMethod.getConfidence()));
-		}
-		for (StrategyMethod htmlMethod : htmlMethods)
-		{
-			if (findMethod(mergedMethods, htmlMethod.getMethod()) == null)
-			{
-				mergedMethods.add(htmlMethod);
-			}
-		}
-		MonsterGuide guide = source.getGuide();
-		return new WikiParsingResult(
-			new MonsterGuide(guide.getMonsterName(), guide.getWikiTitle(), guide.getWikiUrl(), guide.getRevisionId(), guide.getFetchedAt(), mergedMethods, guide.getNotes(), guide.getConfidence()),
-			source.getVariants(),
-			source.getWarnings());
+		return renderedStrategyParser.mergeInto(source, renderedHtml);
 	}
 
-	private List<StrategyMethod> parseRenderedMethods(String html)
+	private List<InventoryRecommendation> inventoryForMethod(CombatMethod method, Map<CombatMethod, List<InventoryRecommendation>> methodInventory, List<InventoryRecommendation> sharedInventory)
 	{
-		List<StrategyMethod> methods = new ArrayList<>();
-		Matcher tabMatcher = TABBER_TAB.matcher(html);
-		while (tabMatcher.find())
-		{
-			CombatMethod method = methodForHeading(htmlText(tabMatcher.group(1)).toLowerCase(Locale.ROOT));
-			if (method == null)
-			{
-				continue;
-			}
-			String tabHtml = tabMatcher.group(2);
-			List<GearRecommendation> gear = parseRenderedEquipment(tabHtml);
-			List<InventoryRecommendation> inventory = parseRenderedInventory(tabHtml);
-			if (!gear.isEmpty() || !inventory.isEmpty())
-			{
-				methods.add(new StrategyMethod(method, gear, inventory, Collections.emptyList(), ParsingConfidence.HIGH));
-			}
-		}
-		return methods;
+		List<InventoryRecommendation> inventory = methodInventory.get(method);
+		return inventory == null || inventory.isEmpty() ? sharedInventory : inventory;
 	}
 
-	private StrategyMethod findMethod(List<StrategyMethod> methods, CombatMethod method)
+	private boolean isInventoryTemplateStart(String line)
 	{
-		for (StrategyMethod candidate : methods)
-		{
-			if (candidate.getMethod() == method)
-			{
-				return candidate;
-			}
-		}
-		return null;
+		return line.toLowerCase(Locale.ROOT).startsWith("{{inventory");
 	}
 
-	private List<GearRecommendation> mergeMaxGear(List<GearRecommendation> maxGear, List<GearRecommendation> alternatives)
+	private boolean isTemplateEnd(String line)
 	{
-		Map<GearSlot, List<GearTier>> bySlot = new EnumMap<>(GearSlot.class);
-		for (GearRecommendation recommendation : maxGear)
-		{
-			bySlot.computeIfAbsent(recommendation.getSlot(), ignored -> new ArrayList<>()).addAll(recommendation.getTiers());
-		}
-		for (GearRecommendation recommendation : alternatives)
-		{
-			List<GearTier> tiers = bySlot.computeIfAbsent(recommendation.getSlot(), ignored -> new ArrayList<>());
-			int offset = tiers.isEmpty() ? 0 : tiers.stream().mapToInt(GearTier::getPriority).max().orElse(0);
-			for (GearTier tier : recommendation.getTiers())
-			{
-				List<RecommendedItem> items = new ArrayList<>();
-				for (RecommendedItem item : tier.getAlternatives())
-				{
-					if (!containsItem(tiers, item.getName()))
-					{
-						items.add(item);
-					}
-				}
-				if (!items.isEmpty())
-				{
-					tiers.add(new GearTier(offset + tier.getPriority(), items));
-				}
-			}
-		}
-		List<GearRecommendation> merged = new ArrayList<>();
-		for (Map.Entry<GearSlot, List<GearTier>> entry : bySlot.entrySet())
-		{
-			entry.getValue().sort(java.util.Comparator.comparingInt(GearTier::getPriority));
-			merged.add(new GearRecommendation(entry.getKey(), entry.getValue()));
-		}
-		return merged;
+		return line.trim().equals("}}") || line.trim().endsWith("}}");
 	}
 
-	private boolean containsItem(List<GearTier> tiers, String name)
+	private List<InventoryRecommendation> parseInventoryTemplate(List<String> lines)
 	{
-		for (GearTier tier : tiers)
-		{
-			for (RecommendedItem item : tier.getAlternatives())
-			{
-				if (item.getName().equalsIgnoreCase(name))
-				{
-					return true;
-				}
-			}
-		}
-		return false;
-	}
-
-	private List<GearRecommendation> parseRenderedEquipment(String html)
-	{
-		Matcher tableMatcher = EQUIPMENT_TABLE.matcher(html);
-		if (!tableMatcher.find())
+		String block = String.join("\n", lines);
+		int start = block.toLowerCase(Locale.ROOT).indexOf("{{inventory");
+		if (start < 0)
 		{
 			return Collections.emptyList();
 		}
-		Map<GearSlot, List<GearTier>> bySlot = new EnumMap<>(GearSlot.class);
-		String tableHtml = tableMatcher.group(1);
-		Matcher slotMatcher = EQUIPMENT_SLOT_START.matcher(tableHtml);
-		while (slotMatcher.find())
+		int end = block.lastIndexOf("}}");
+		String content = end > start
+			? block.substring(start + "{{Inventory".length(), end)
+			: block.substring(start + "{{Inventory".length());
+		Map<String, Integer> counts = new LinkedHashMap<>();
+		for (String parameter : splitTemplateParameters(content))
 		{
-			GearSlot slot = parseSlot(slotMatcher.group(1));
-			int slotStart = slotMatcher.end();
-			int slotEnd = nextSlotStart(tableHtml, slotStart);
-			List<RecommendedItem> items = htmlTitles(tableHtml.substring(slotStart, slotEnd));
-			if (slot != null && !items.isEmpty())
+			String itemName = inventoryTemplateItem(parameter);
+			if (!itemName.isEmpty())
 			{
-				bySlot.put(slot, Collections.singletonList(new GearTier(0, items)));
+				counts.merge(itemName, 1, Integer::sum);
 			}
-		}
-		List<GearRecommendation> recommendations = new ArrayList<>();
-		for (Map.Entry<GearSlot, List<GearTier>> entry : bySlot.entrySet())
-		{
-			recommendations.add(new GearRecommendation(entry.getKey(), entry.getValue()));
-		}
-		return recommendations;
-	}
-
-	private int nextSlotStart(String html, int start)
-	{
-		Matcher matcher = EQUIPMENT_SLOT_START.matcher(html);
-		return matcher.find(start) ? matcher.start() : html.length();
-	}
-
-	private List<InventoryRecommendation> parseRenderedInventory(String html)
-	{
-		Matcher tableMatcher = INVENTORY_TABLE.matcher(html);
-		if (!tableMatcher.find())
-		{
-			return Collections.emptyList();
 		}
 		List<InventoryRecommendation> inventory = new ArrayList<>();
-		for (RecommendedItem item : htmlTitles(tableMatcher.group(1)))
+		for (Map.Entry<String, Integer> entry : counts.entrySet())
 		{
-			inventory.add(new InventoryRecommendation(item.getName(), QuantityMode.UNSPECIFIED, 0, 0, true, "", Collections.emptyList()));
+			inventory.add(new InventoryRecommendation(entry.getKey(), entry.getValue(), true));
 		}
 		return inventory;
 	}
 
-	private List<RecommendedItem> htmlTitles(String html)
+	private List<String> splitTemplateParameters(String content)
 	{
-		List<RecommendedItem> items = new ArrayList<>();
-		Matcher linkMatcher = HTML_LINK.matcher(html);
-		while (linkMatcher.find())
+		List<String> parameters = new ArrayList<>();
+		StringBuilder current = new StringBuilder();
+		int templateDepth = 0;
+		int linkDepth = 0;
+		for (int i = 0; i < content.length(); i++)
 		{
-			String attributes = linkMatcher.group(1);
-			Matcher hrefMatcher = HTML_HREF.matcher(attributes);
-			Matcher titleMatcher = HTML_TITLE.matcher(attributes);
-			if (!hrefMatcher.find() || !titleMatcher.find())
+			char character = content.charAt(i);
+			char next = i + 1 < content.length() ? content.charAt(i + 1) : 0;
+			if (character == '{' && next == '{')
 			{
+				templateDepth++;
+				current.append(character).append(next);
+				i++;
 				continue;
 			}
-			if (hrefMatcher.group(1).contains(":"))
+			if (character == '}' && next == '}')
 			{
+				templateDepth = Math.max(0, templateDepth - 1);
+				current.append(character).append(next);
+				i++;
 				continue;
 			}
-			String name = htmlText(titleMatcher.group(1));
-			if (isUsableItemTitle(name) && !containsRecommended(items, name))
+			if (character == '[' && next == '[')
 			{
-				items.add(new RecommendedItem(name));
+				linkDepth++;
+				current.append(character).append(next);
+				i++;
+				continue;
 			}
+			if (character == ']' && next == ']')
+			{
+				linkDepth = Math.max(0, linkDepth - 1);
+				current.append(character).append(next);
+				i++;
+				continue;
+			}
+			if (character == '|' && templateDepth == 0 && linkDepth == 0)
+			{
+				parameters.add(current.toString());
+				current.setLength(0);
+				continue;
+			}
+			current.append(character);
 		}
-		return items;
+		parameters.add(current.toString());
+		return parameters;
 	}
 
-	private boolean isUsableItemTitle(String name)
+	private String inventoryTemplateItem(String parameter)
 	{
-		String normalized = name.toLowerCase(Locale.ROOT).trim();
-		return !normalized.isEmpty()
-			&& !normalized.endsWith(" slot")
-			&& !normalized.contains("placeholder")
-			&& !normalized.equals("special attack")
-			&& !normalized.equals("empty")
-			&& !normalized.equals("n/a")
-			&& !normalized.equals("none");
-	}
-
-	private boolean containsRecommended(List<RecommendedItem> items, String name)
-	{
-		for (RecommendedItem item : items)
+		String value = parameter == null ? "" : parameter.trim();
+		if (value.isEmpty())
 		{
-			if (item.getName().equalsIgnoreCase(name))
+			return "";
+		}
+		int equals = value.indexOf('=');
+		if (equals >= 0)
+		{
+			String key = value.substring(0, equals).trim().toLowerCase(Locale.ROOT);
+			String assignedValue = value.substring(equals + 1).trim();
+			if (key.matches("\\d+"))
 			{
-				return true;
+				value = assignedValue;
+			}
+			else if ("align".equals(key) || "caption".equals(key) || "name".equals(key) || "style".equals(key))
+			{
+				return "";
 			}
 		}
-		return false;
-	}
-
-	private String htmlText(String value)
-	{
-		return value == null ? "" : value
-			.replace("&amp;", "&")
-			.replace("&#39;", "'")
-			.replace("&#039;", "'")
-			.replace("&apos;", "'")
-			.replace("&quot;", "\"")
-			.replace("&nbsp;", " ")
-			.replaceAll("\\s+", " ")
-			.trim();
+		return cleanItemName(value);
 	}
 
 	private String categorize(String heading)
@@ -408,16 +320,18 @@ public class WikiStrategyParser
 
 	private CombatMethod methodForTabberLine(String line)
 	{
-		String normalized = line.trim().toLowerCase(Locale.ROOT);
-		if (normalized.matches("^(ranged|range)\\s*=\\s*$"))
+		String normalized = line.trim().toLowerCase(Locale.ROOT)
+			.replaceFirst("^\\|-\\|\\s*", "")
+			.trim();
+		if (normalized.matches("^(ranged|range)(?:\\s*\\([^)]*\\))?\\s*=\\s*$"))
 		{
 			return CombatMethod.RANGED;
 		}
-		if (normalized.matches("^melee\\s*=\\s*$"))
+		if (normalized.matches("^melee(?:\\s*\\([^)]*\\))?\\s*=\\s*$"))
 		{
 			return CombatMethod.MELEE;
 		}
-		if (normalized.matches("^(magic|mage)\\s*=\\s*$"))
+		if (normalized.matches("^(magic|mage)(?:\\s*\\([^)]*\\))?\\s*=\\s*$"))
 		{
 			return CombatMethod.MAGIC;
 		}
@@ -468,12 +382,12 @@ public class WikiStrategyParser
 			{
 				continue;
 			}
-			GearSlot slot = parseSlot(slotSplit[0]);
+			GearSlot slot = WikiGearSlots.parse(slotSplit[0]);
 			if (slot == null)
 			{
 				continue;
 			}
-			Integer templateRank = parseTemplateRank(slotSplit[0]);
+			Integer templateRank = WikiGearSlots.templateRank(slotSplit[0]);
 			String[] tierParts = slotSplit[1].split(">");
 			for (int i = 0; i < tierParts.length; i++)
 			{
@@ -501,46 +415,6 @@ public class WikiStrategyParser
 			recommendations.add(new GearRecommendation(entry.getKey(), entry.getValue()));
 		}
 		return recommendations;
-	}
-
-	private Integer parseTemplateRank(String slotKey)
-	{
-		Matcher matcher = SLOT_RANK.matcher(slotKey == null ? "" : slotKey.trim());
-		return matcher.matches() ? Integer.parseInt(matcher.group(1)) : null;
-	}
-
-	private GearSlot parseSlot(String value)
-	{
-		String normalized = value.trim()
-			.replaceFirst("^\\|", "")
-			.replaceFirst("\\d+$", "")
-			.trim()
-			.toUpperCase(Locale.ROOT)
-			.replace(' ', '_');
-		if ("TORSO".equals(normalized))
-		{
-			normalized = "BODY";
-		}
-		if ("AMMUNITION".equals(normalized))
-		{
-			normalized = "AMMO";
-		}
-		if ("GLOVES".equals(normalized))
-		{
-			normalized = "HANDS";
-		}
-		if ("BOOTS".equals(normalized))
-		{
-			normalized = "FEET";
-		}
-		try
-		{
-			return GearSlot.valueOf(normalized);
-		}
-		catch (IllegalArgumentException ex)
-		{
-			return null;
-		}
 	}
 
 	private String stripBullet(String line)

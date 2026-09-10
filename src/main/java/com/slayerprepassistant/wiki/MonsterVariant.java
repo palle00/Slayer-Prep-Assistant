@@ -32,6 +32,6 @@ public class MonsterVariant
 
 	public TargetOption toTargetOption()
 	{
-		return new TargetOption(displayName, displayName, wikiPageTitle, "Strategies/" + wikiPageTitle, null, null, "Monster variant from Wiki", true);
+		return new TargetOption(displayName, wikiPageTitle, "Strategies/" + wikiPageTitle);
 	}
 }

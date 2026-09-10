@@ -9,7 +9,7 @@ public class SlayerTaskServiceTest
 	@Test
 	public void startsWithNoTaskWhenNoClientOrChatDataExists()
 	{
-		SlayerTaskService service = new SlayerTaskService(null);
+		SlayerTaskService service = new SlayerTaskService();
 
 		assertFalse(service.getCurrentTask(null).isActive());
 	}

@@ -20,8 +20,8 @@ public class LoadoutBuilderTest
 	@Test
 	public void bestIOwnChoosesHighestRankedOwnedAlternative()
 	{
-		RecommendedItem best = new RecommendedItem("Best sword", new HashSet<>(Collections.singletonList(1)), "");
-		RecommendedItem owned = new RecommendedItem("Owned sword", new HashSet<>(Collections.singletonList(2)), "");
+		RecommendedItem best = new RecommendedItem("Best sword", new HashSet<>(Collections.singletonList(1)));
+		RecommendedItem owned = new RecommendedItem("Owned sword", new HashSet<>(Collections.singletonList(2)));
 		GearRecommendation recommendation = new GearRecommendation(GearSlot.WEAPON, Arrays.asList(
 			new GearTier(1, Collections.singletonList(best)),
 			new GearTier(2, Collections.singletonList(owned))));
@@ -39,7 +39,7 @@ public class LoadoutBuilderTest
 	@Test
 	public void unknownBankDoesNotMarkRecommendedItemMissing()
 	{
-		RecommendedItem item = new RecommendedItem("Known id", new HashSet<>(Collections.singletonList(99)), "");
+		RecommendedItem item = new RecommendedItem("Known id", new HashSet<>(Collections.singletonList(99)));
 		GearRecommendation recommendation = new GearRecommendation(GearSlot.HEAD, Collections.singletonList(new GearTier(1, Collections.singletonList(item))));
 
 		LoadoutResult result = builder.build(Collections.singletonList(recommendation), PlayerInventoryState.unknownBank(), LoadoutMode.BEST_I_OWN);
@@ -50,8 +50,8 @@ public class LoadoutBuilderTest
 	@Test
 	public void maxChoosesHighestRankedWikiRecommendationEvenWhenMissing()
 	{
-		RecommendedItem best = new RecommendedItem("Best sword", new HashSet<>(Collections.singletonList(1)), "");
-		RecommendedItem owned = new RecommendedItem("Owned sword", new HashSet<>(Collections.singletonList(2)), "");
+		RecommendedItem best = new RecommendedItem("Best sword", new HashSet<>(Collections.singletonList(1)));
+		RecommendedItem owned = new RecommendedItem("Owned sword", new HashSet<>(Collections.singletonList(2)));
 		GearRecommendation recommendation = new GearRecommendation(GearSlot.WEAPON, Arrays.asList(
 			new GearTier(1, Collections.singletonList(best)),
 			new GearTier(2, Collections.singletonList(owned))));
@@ -69,9 +69,9 @@ public class LoadoutBuilderTest
 	@Test
 	public void bestValueChoosesCheapestUpgradeAboveOwnedBaseline()
 	{
-		RecommendedItem expensive = new RecommendedItem("Expensive sword", new HashSet<>(Collections.singletonList(1)), "");
-		RecommendedItem cheap = new RecommendedItem("Cheap sword", new HashSet<>(Collections.singletonList(2)), "");
-		RecommendedItem owned = new RecommendedItem("Owned sword", new HashSet<>(Collections.singletonList(3)), "");
+		RecommendedItem expensive = new RecommendedItem("Expensive sword", new HashSet<>(Collections.singletonList(1)));
+		RecommendedItem cheap = new RecommendedItem("Cheap sword", new HashSet<>(Collections.singletonList(2)));
+		RecommendedItem owned = new RecommendedItem("Owned sword", new HashSet<>(Collections.singletonList(3)));
 		GearRecommendation recommendation = new GearRecommendation(GearSlot.WEAPON, Arrays.asList(
 			new GearTier(1, Collections.singletonList(expensive)),
 			new GearTier(2, Collections.singletonList(cheap)),
@@ -102,8 +102,8 @@ public class LoadoutBuilderTest
 	@Test
 	public void bestValueFallsBackToOwnedBaselineWhenPricesAreUnavailable()
 	{
-		RecommendedItem best = new RecommendedItem("Best sword", new HashSet<>(Collections.singletonList(1)), "");
-		RecommendedItem owned = new RecommendedItem("Owned sword", new HashSet<>(Collections.singletonList(2)), "");
+		RecommendedItem best = new RecommendedItem("Best sword", new HashSet<>(Collections.singletonList(1)));
+		RecommendedItem owned = new RecommendedItem("Owned sword", new HashSet<>(Collections.singletonList(2)));
 		GearRecommendation recommendation = new GearRecommendation(GearSlot.WEAPON, Arrays.asList(
 			new GearTier(1, Collections.singletonList(best)),
 			new GearTier(2, Collections.singletonList(owned))));

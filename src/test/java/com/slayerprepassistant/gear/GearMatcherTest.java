@@ -49,4 +49,19 @@ public class GearMatcherTest
 
 		assertEquals(OwnershipState.UNKNOWN, ownership);
 	}
+
+	@Test
+	public void inventoryOwnershipIgnoresEquippedItems()
+	{
+		PlayerInventoryState state = new PlayerInventoryState(
+			Collections.emptyMap(),
+			Collections.emptyMap(),
+			new HashSet<>(Collections.singletonList("Prayer potion")),
+			Collections.emptySet(),
+			new BankSnapshot(Collections.emptyMap(), Collections.emptySet(), Instant.now()));
+
+		OwnershipState ownership = new GearMatcher(new ItemResolver()).ownershipForInventoryItem(new RecommendedItem("Prayer potion"), state);
+
+		assertEquals(OwnershipState.MISSING, ownership);
+	}
 }

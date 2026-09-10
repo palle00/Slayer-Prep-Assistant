@@ -52,5 +52,5 @@
 		<appender-ref ref="STDOUT"/>
 		<appender-ref ref="FILE"/>
 	</root>
-	<logger name="com.SlayerPrepAssistant" level="DEBUG" />
+	<logger name="com.slayerprepassistant" level="DEBUG" />
 </configuration>

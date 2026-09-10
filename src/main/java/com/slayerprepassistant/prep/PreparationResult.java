@@ -25,11 +25,6 @@ public class PreparationResult
 	private final ReadinessResult readinessResult;
 	private final PlayerInventoryState playerState;
 
-	public PreparationResult(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, MonsterGuide guide, CombatMethod selectedMethod, StrategyMethod strategyMethod, LoadoutResult loadoutResult, ReadinessResult readinessResult)
-	{
-		this(taskContext, targets, selectedTarget, guide, selectedMethod, strategyMethod, loadoutResult, readinessResult, PlayerInventoryState.unknownBank());
-	}
-
 	public PreparationResult(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, MonsterGuide guide, CombatMethod selectedMethod, StrategyMethod strategyMethod, LoadoutResult loadoutResult, ReadinessResult readinessResult, PlayerInventoryState playerState)
 	{
 		this(PreparationStatus.SETUP_READY, "", taskContext, targets, selectedTarget, guide, selectedMethod, strategyMethod, loadoutResult, readinessResult, playerState);
@@ -50,19 +45,9 @@ public class PreparationResult
 		this.playerState = playerState == null ? PlayerInventoryState.unknownBank() : playerState;
 	}
 
-	public static PreparationResult loading(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, String message)
-	{
-		return new PreparationResult(PreparationStatus.LOADING, message, taskContext, targets, selectedTarget, null, CombatMethod.GENERAL, null, null, null, PlayerInventoryState.unknownBank());
-	}
-
 	public static PreparationResult noSetup(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, String message)
 	{
-		return new PreparationResult(PreparationStatus.NO_SETUP, message, taskContext, targets, selectedTarget, null, CombatMethod.GENERAL, null, null, null, PlayerInventoryState.unknownBank());
-	}
-
-	public static PreparationResult error(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, String message)
-	{
-		return new PreparationResult(PreparationStatus.ERROR, message, taskContext, targets, selectedTarget, null, CombatMethod.GENERAL, null, null, null, PlayerInventoryState.unknownBank());
+		return new PreparationResult(PreparationStatus.NO_SETUP, message, taskContext, targets, selectedTarget, null, CombatMethod.defaultMethod(), null, null, null, PlayerInventoryState.unknownBank());
 	}
 
 	public PreparationStatus getStatus()

@@ -1,12 +1,8 @@
 package com.slayerprepassistant.wiki;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -27,7 +23,7 @@ public class WikiClient
 	private static final String API_URL = "https://oldschool.runescape.wiki/api.php";
 
 	private final OkHttpClient httpClient;
-	private final Gson gson;
+	private final WikiApiResponseParser responseParser;
 	private final Map<String, WikiResponse> revisionCache = new HashMap<>();
 	private final Map<String, WikiResponse> renderedCache = new HashMap<>();
 	private final Map<String, BufferedImage> imageCache = new HashMap<>();
@@ -39,12 +35,12 @@ public class WikiClient
 	public WikiClient(OkHttpClient httpClient, Gson gson)
 	{
 		this.httpClient = httpClient;
-		this.gson = gson;
+		this.responseParser = new WikiApiResponseParser(gson);
 	}
 
 	public void fetchRevisionText(String title, Consumer<WikiResponse> callback)
 	{
-		String key = cacheKey(title);
+		String key = WikiTitles.cacheKey(title);
 		WikiResponse cached;
 		synchronized (this)
 		{
@@ -99,7 +95,7 @@ public class WikiClient
 						completeWikiResponse(pendingRevisions, revisionCache, key, new WikiResponse(WikiState.ERROR, null, "Wiki returned HTTP " + response.code()));
 						return;
 					}
-					completeWikiResponse(pendingRevisions, revisionCache, key, parseRevision(title, body.string()));
+					completeWikiResponse(pendingRevisions, revisionCache, key, responseParser.parseRevision(title, body.string()));
 				}
 			}
 		});
@@ -107,7 +103,7 @@ public class WikiClient
 
 	public void fetchRenderedHtml(String title, Consumer<WikiResponse> callback)
 	{
-		String key = cacheKey(title);
+		String key = WikiTitles.cacheKey(title);
 		WikiResponse cached;
 		synchronized (this)
 		{
@@ -160,7 +156,7 @@ public class WikiClient
 						completeWikiResponse(pendingRendered, renderedCache, key, new WikiResponse(WikiState.ERROR, null, "Wiki returned HTTP " + response.code()));
 						return;
 					}
-					completeWikiResponse(pendingRendered, renderedCache, key, parseRendered(title, body.string()));
+					completeWikiResponse(pendingRendered, renderedCache, key, responseParser.parseRendered(title, body.string()));
 				}
 			}
 		});
@@ -168,7 +164,7 @@ public class WikiClient
 
 	public void fetchPageImage(String title, int size, Consumer<BufferedImage> callback)
 	{
-		String key = cacheKey(title) + "|" + size;
+		String key = WikiTitles.cacheKey(title) + "|" + size;
 		BufferedImage cached;
 		boolean cachedMiss;
 		synchronized (this)
@@ -221,7 +217,7 @@ public class WikiClient
 						completeImageResponse(key, null, false);
 						return;
 					}
-					String imageUrl = pageImageUrl(body.string());
+					String imageUrl = responseParser.pageImageUrl(body.string());
 					if (imageUrl.isEmpty())
 					{
 						completeImageResponse(key, null, true);
@@ -308,98 +304,4 @@ public class WikiClient
 		}
 	}
 
-	private String cacheKey(String title)
-	{
-		return WikiTitles.cacheKey(title);
-	}
-
-	private WikiResponse parseRevision(String fallbackTitle, String json)
-	{
-		try
-		{
-			JsonObject root = gson.fromJson(json, JsonObject.class);
-			JsonObject query = root.getAsJsonObject("query");
-			JsonObject pages = query == null ? null : query.getAsJsonObject("pages");
-			if (pages == null || pages.entrySet().isEmpty())
-			{
-				return new WikiResponse(WikiState.ERROR, null, "Wiki page not found");
-			}
-			JsonObject page = pages.entrySet().iterator().next().getValue().getAsJsonObject();
-			if (page.has("missing"))
-			{
-				return new WikiResponse(WikiState.ERROR, null, "Wiki page not found");
-			}
-			String title = page.has("title") ? page.get("title").getAsString() : fallbackTitle;
-			JsonArray revisions = page.getAsJsonArray("revisions");
-			if (revisions == null || revisions.size() == 0)
-			{
-				return new WikiResponse(WikiState.ERROR, null, "Wiki revision not found");
-			}
-			JsonObject revision = revisions.get(0).getAsJsonObject();
-			long revisionId = revision.has("revid") ? revision.get("revid").getAsLong() : 0;
-			String text = revisionText(revision);
-			return new WikiResponse(WikiState.READY, new WikiRevision(title, revisionId, Instant.now(), text), "");
-		}
-		catch (RuntimeException ex)
-		{
-			return new WikiResponse(WikiState.ERROR, null, "Unable to parse Wiki response");
-		}
-	}
-
-	private String pageImageUrl(String json)
-	{
-		try
-		{
-			JsonObject root = gson.fromJson(json, JsonObject.class);
-			JsonObject query = root.getAsJsonObject("query");
-			JsonObject pages = query == null ? null : query.getAsJsonObject("pages");
-			if (pages == null || pages.entrySet().isEmpty())
-			{
-				return "";
-			}
-			JsonObject page = pages.entrySet().iterator().next().getValue().getAsJsonObject();
-			JsonObject thumbnail = page.getAsJsonObject("thumbnail");
-			return thumbnail != null && thumbnail.has("source") ? thumbnail.get("source").getAsString() : "";
-		}
-		catch (RuntimeException ex)
-		{
-			return "";
-		}
-	}
-
-	private WikiResponse parseRendered(String fallbackTitle, String json)
-	{
-		try
-		{
-			JsonObject root = gson.fromJson(json, JsonObject.class);
-			JsonObject parse = root.getAsJsonObject("parse");
-			if (parse == null)
-			{
-				return new WikiResponse(WikiState.ERROR, null, "Wiki page not found");
-			}
-			String title = parse.has("title") ? parse.get("title").getAsString() : fallbackTitle;
-			long revisionId = parse.has("revid") ? parse.get("revid").getAsLong() : 0;
-			JsonObject text = parse.getAsJsonObject("text");
-			JsonElement html = text == null ? null : text.get("*");
-			return html == null
-				? new WikiResponse(WikiState.ERROR, null, "Wiki rendered HTML not found")
-				: new WikiResponse(WikiState.READY, new WikiRevision(title, revisionId, Instant.now(), html.getAsString()), "");
-		}
-		catch (RuntimeException ex)
-		{
-			return new WikiResponse(WikiState.ERROR, null, "Unable to parse Wiki response");
-		}
-	}
-
-	private String revisionText(JsonObject revision)
-	{
-		JsonObject slots = revision.getAsJsonObject("slots");
-		JsonObject main = slots == null ? null : slots.getAsJsonObject("main");
-		JsonElement text = main == null ? revision.get("*") : main.get("*");
-		if (text == null && main != null)
-		{
-			text = main.get("content");
-		}
-		return text == null ? "" : text.getAsString();
-	}
 }

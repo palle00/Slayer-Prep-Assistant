@@ -3,34 +3,19 @@ package com.slayerprepassistant.task;
 public class TargetOption
 {
 	private final String displayName;
-	private final String npcName;
 	private final String wikiPage;
 	private final String strategyPage;
-	private final Integer combatLevel;
-	private final Integer slayerLevel;
-	private final String shortDescription;
-	private final boolean hasStrategyGuide;
 
-	public TargetOption(String displayName, String npcName, String wikiPage, String strategyPage, Integer combatLevel, Integer slayerLevel, String shortDescription, boolean hasStrategyGuide)
+	public TargetOption(String displayName, String wikiPage, String strategyPage)
 	{
 		this.displayName = displayName;
-		this.npcName = npcName;
 		this.wikiPage = wikiPage;
 		this.strategyPage = strategyPage;
-		this.combatLevel = combatLevel;
-		this.slayerLevel = slayerLevel;
-		this.shortDescription = shortDescription;
-		this.hasStrategyGuide = hasStrategyGuide;
 	}
 
 	public String getDisplayName()
 	{
 		return displayName;
-	}
-
-	public String getNpcName()
-	{
-		return npcName;
 	}
 
 	public String getWikiPage()
@@ -43,24 +28,14 @@ public class TargetOption
 		return strategyPage;
 	}
 
-	public Integer getCombatLevel()
+	public String lookupKey()
 	{
-		return combatLevel;
+		return lookupKey(this);
 	}
 
-	public Integer getSlayerLevel()
+	public static String lookupKey(TargetOption target)
 	{
-		return slayerLevel;
-	}
-
-	public String getShortDescription()
-	{
-		return shortDescription;
-	}
-
-	public boolean isHasStrategyGuide()
-	{
-		return hasStrategyGuide;
+		return target == null ? "" : target.displayName + "|" + target.wikiPage + "|" + target.strategyPage;
 	}
 
 	@Override

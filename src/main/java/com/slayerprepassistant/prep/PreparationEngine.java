@@ -30,11 +30,6 @@ public class PreparationEngine
 		this.loadoutBuilder = new LoadoutBuilder(new GearMatcher(itemResolver), priceLookup);
 	}
 
-	public PreparationResult prepare(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, CombatMethod preferredMethod, LoadoutMode loadoutMode, PlayerInventoryState playerState)
-	{
-		return PreparationResult.noSetup(taskContext, targets, selectedTarget, "No setup found.");
-	}
-
 	public PreparationResult prepareGuide(SlayerTaskContext taskContext, List<TargetOption> targets, TargetOption selectedTarget, MonsterGuide guide, CombatMethod preferredMethod, LoadoutMode loadoutMode, PlayerInventoryState playerState)
 	{
 		if (!hasUsableSetup(guide))
@@ -62,7 +57,7 @@ public class PreparationEngine
 			}
 		}
 		return guide.getMethods().isEmpty()
-			? new StrategyMethod(CombatMethod.GENERAL, java.util.Collections.emptyList(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), com.slayerprepassistant.model.ParsingConfidence.UNKNOWN)
+			? new StrategyMethod(CombatMethod.defaultMethod(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), java.util.Collections.emptyList(), com.slayerprepassistant.model.ParsingConfidence.UNKNOWN)
 			: guide.getMethods().get(0);
 	}
 }

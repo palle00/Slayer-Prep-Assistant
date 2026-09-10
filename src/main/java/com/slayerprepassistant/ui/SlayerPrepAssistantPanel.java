@@ -2,6 +2,7 @@ package com.slayerprepassistant.ui;
 
 import com.slayerprepassistant.bank.OwnershipState;
 import com.slayerprepassistant.gear.GearMatch;
+import com.slayerprepassistant.gear.GearMatcher;
 import com.slayerprepassistant.gear.GearRecommendation;
 import com.slayerprepassistant.gear.GearTier;
 import com.slayerprepassistant.gear.LoadoutMode;
@@ -9,30 +10,25 @@ import com.slayerprepassistant.gear.RecommendedItem;
 import com.slayerprepassistant.guide.CombatMethod;
 import com.slayerprepassistant.guide.InventoryRecommendation;
 import com.slayerprepassistant.items.ItemResolver;
+import com.slayerprepassistant.items.RuneLiteItemLookup;
 import com.slayerprepassistant.prep.PreparationResult;
 import com.slayerprepassistant.prep.PreparationStatus;
 import com.slayerprepassistant.task.SlayerTaskContext;
 import com.slayerprepassistant.task.TargetOption;
 import com.slayerprepassistant.wiki.WikiTitles;
 import java.awt.BorderLayout;
-import java.awt.BasicStroke;
 import java.awt.CardLayout;
 import java.awt.Color;
 import java.awt.Component;
 import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.Font;
-import java.awt.Graphics;
-import java.awt.Graphics2D;
 import java.awt.GridLayout;
 import java.awt.Image;
-import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.Consumer;
 import javax.swing.BorderFactory;
@@ -48,36 +44,34 @@ import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.border.Border;
-import net.runelite.api.gameval.ItemID;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.PluginPanel;
 import net.runelite.client.util.AsyncBufferedImage;
 import net.runelite.client.util.ImageUtil;
 import net.runelite.client.util.LinkBrowser;
-import net.runelite.http.api.item.ItemPrice;
 
 public class SlayerPrepAssistantPanel extends PluginPanel
 {
-	private static final Color BACKGROUND = new Color(25, 25, 25);
-	private static final Color PANEL = new Color(30, 30, 30);
-	private static final Color PANEL_LIGHT = new Color(38, 38, 38);
-	private static final Color BORDER = new Color(44, 44, 44);
-	private static final Color TEXT = new Color(230, 230, 230);
-	private static final Color MUTED = new Color(168, 168, 168);
-	private static final Color GOLD = new Color(255, 176, 0);
-	private static final Color GREEN = new Color(128, 206, 82);
-	private static final Color BLUE = new Color(82, 168, 214);
-	private static final Color YELLOW = new Color(255, 207, 38);
-	private static final Color RED = new Color(221, 83, 72);
+	static final Color BACKGROUND = new Color(25, 25, 25);
+	static final Color PANEL = new Color(30, 30, 30);
+	static final Color PANEL_LIGHT = new Color(38, 38, 38);
+	static final Color BORDER = new Color(44, 44, 44);
+	static final Color TEXT = new Color(230, 230, 230);
+	static final Color MUTED = new Color(168, 168, 168);
+	static final Color GOLD = new Color(255, 176, 0);
+	static final Color GREEN = new Color(128, 206, 82);
+	static final Color BLUE = new Color(82, 168, 214);
+	static final Color YELLOW = new Color(255, 207, 38);
+	static final Color RED = new Color(221, 83, 72);
 	private static final int SIDEBAR_WIDTH = 226;
 	private static final int CONTROL_HEIGHT = 34;
-	private static final int CARD_RADIUS = 3;
-	private static final int CONTROL_RADIUS = 3;
-	private static final float FONT_XS = 13f;
-	private static final float FONT_SM = 14f;
+	static final int CARD_RADIUS = 3;
+	static final int CONTROL_RADIUS = 3;
+	static final float FONT_XS = 13f;
+	static final float FONT_SM = 14f;
 	private static final float FONT_MD = 15f;
 	private static final float FONT_LG = 16f;
-	private static final float FONT_XL = 17f;
+	static final float FONT_XL = 17f;
 	private static final float FONT_TITLE = 18f;
 	private static final float FONT_TASK_TITLE = 19f;
 
@@ -86,8 +80,9 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private final WikiImageLoader wikiImageLoader;
 	private final ItemManager itemManager;
 	private final ItemResolver itemResolver;
+	private final RuneLiteItemLookup itemLookup;
+	private final GearMatcher gearMatcher;
 	private final BufferedImage pluginIcon;
-	private final Map<String, Integer> itemIdCache = new HashMap<>();
 
 	private final JPanel body = verticalPanel(BACKGROUND);
 	private final JPanel controlsPanel = verticalPanel(PANEL);
@@ -116,7 +111,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private PreparationResult currentResult;
 	private TargetOption selectedTarget;
-	private CombatMethod selectedMethod = CombatMethod.GENERAL;
+	private CombatMethod selectedMethod = CombatMethod.defaultMethod();
 	private LoadoutMode selectedLoadoutMode = LoadoutMode.BEST_I_OWN;
 	private boolean rebuilding;
 	private String currentWikiUrl = "";
@@ -132,6 +127,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		WikiImageLoader wikiImageLoader,
 		ItemManager itemManager,
 		ItemResolver itemResolver,
+		RuneLiteItemLookup itemLookup,
 		BufferedImage pluginIcon)
 	{
 		super(false);
@@ -140,6 +136,8 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		this.wikiImageLoader = wikiImageLoader;
 		this.itemManager = itemManager;
 		this.itemResolver = itemResolver;
+		this.itemLookup = itemLookup;
+		this.gearMatcher = new GearMatcher(itemResolver);
 		this.pluginIcon = pluginIcon;
 		this.skeletonTimer = new Timer(120, event ->
 		{
@@ -450,20 +448,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 			rebuildStatePanel("NO SETUP", "Select a target to build a checklist.", null);
 			return;
 		}
-		if (currentResult.getStatus() == PreparationStatus.LOADING)
-		{
-			rebuildReadiness(0, false);
-			showSetupControls(false);
-			rebuildStatePanel("LOADING", currentResult.getMessage(), null);
-			return;
-		}
-		if (currentResult.getStatus() == PreparationStatus.ERROR)
-		{
-			rebuildReadiness(0, false);
-			showSetupControls(false);
-			rebuildStatePanel("ERROR", currentResult.getMessage(), null);
-			return;
-		}
 		if (currentResult.getStatus() == PreparationStatus.NO_SETUP)
 		{
 			rebuildReadiness(0, false);
@@ -580,9 +564,9 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	{
 		currentWikiUrl = selectedTarget == null ? "" : wikiUrl(selectedTarget);
 		resultPanel.removeAll();
-		resultPanel.add(new SkeletonSection("EQUIPMENT", 8, true));
+		resultPanel.add(new SkeletonSection("EQUIPMENT", 8, true, () -> skeletonFrame));
 		resultPanel.add(spacer(5));
-		resultPanel.add(new SkeletonSection("INVENTORY", 2, false));
+		resultPanel.add(new SkeletonSection("INVENTORY", 2, false, () -> skeletonFrame));
 		startSkeletonLoading();
 		refreshUi();
 	}
@@ -625,18 +609,9 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 			{
 				builder.append(';');
 			}
-			builder.append(targetKey(target));
+			builder.append(TargetOption.lookupKey(target));
 		}
 		return builder.toString();
-	}
-
-	private String targetKey(TargetOption target)
-	{
-		if (target == null)
-		{
-			return "";
-		}
-		return target.getDisplayName() + "|" + target.getWikiPage() + "|" + target.getStrategyPage();
 	}
 
 	private String resultKey(PreparationResult result)
@@ -648,7 +623,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		StringBuilder builder = new StringBuilder();
 		builder.append(result.getStatus()).append('|')
 			.append(result.getMessage()).append('|')
-			.append(targetKey(result.getSelectedTarget())).append('|')
+			.append(TargetOption.lookupKey(result.getSelectedTarget())).append('|')
 			.append(result.getSelectedMethod());
 		if (result.getLoadoutResult() != null)
 		{
@@ -688,7 +663,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		{
 			rows.add(gearRow(matches.get(i), i));
 		}
-		return new CollapsibleSection("EQUIPMENT", null, true, rows);
+		return new CollapsibleSection("EQUIPMENT", null, true, rows, this::refreshUi);
 	}
 
 	private JPanel gearRow(GearMatch match, int index)
@@ -786,27 +761,27 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		body.add(grid);
 		body.add(spacer(5));
 		body.add(label(slots + " / 28 recommended", MUTED, Font.PLAIN, FONT_XS));
-		return new CollapsibleSection("INVENTORY", null, true, body);
+		return new CollapsibleSection("INVENTORY", null, true, body, this::refreshUi);
 	}
 
 	private JComponent inventorySlot(InventoryRecommendation recommendation)
 	{
 		OwnershipState state = inventoryOwnership(recommendation);
 		RecommendedItem item = itemResolver.resolve(recommendation.getItemOrCategory());
-		InventorySlotTile slot = new InventorySlotTile(item, recommendation.getMinimumQuantity(), state);
+		InventorySlotTile slot = new InventorySlotTile(item, recommendation.getMinimumQuantity(), state, this::itemImage, this::loadWikiItemImage);
 		slot.setToolTipText(recommendation.getItemOrCategory() + " - " + displayStatusText(state));
 		return slot;
 	}
 
 	private JComponent emptySlot()
 	{
-		return new InventorySlotTile(null, 0, null);
+		return new InventorySlotTile(null, 0, null, this::itemImage, this::loadWikiItemImage);
 	}
 
 	private void rebuildTargetControl(List<TargetOption> targets, boolean awaitSelection)
 	{
 		List<TargetOption> safeTargets = targets == null ? Collections.emptyList() : targets;
-		String targetRenderKey = awaitSelection + "|" + targetKey(selectedTarget) + "|" + targetsKey(safeTargets);
+		String targetRenderKey = awaitSelection + "|" + TargetOption.lookupKey(selectedTarget) + "|" + targetsKey(safeTargets);
 		if (targetRenderKey.equals(lastTargetRenderKey))
 		{
 			return;
@@ -870,7 +845,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		methodPanel.setLayout(new GridLayout(1, Math.max(1, methodChoices.size()), 4, 0));
 		if (methodChoices.size() <= 1)
 		{
-			methodPanel.add(label(methodChoices.isEmpty() ? "General" : methodChoices.get(0).toString(), TEXT, Font.PLAIN, FONT_XS));
+			methodPanel.add(label(methodChoices.isEmpty() ? CombatMethod.defaultMethod().toString() : methodChoices.get(0).toString(), TEXT, Font.PLAIN, FONT_XS));
 			return;
 		}
 		for (CombatMethod method : methodChoices)
@@ -969,38 +944,12 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 
 	private OwnershipState inventoryOwnership(InventoryRecommendation recommendation, com.slayerprepassistant.bank.PlayerInventoryState playerState)
 	{
-		return itemOwnership(itemResolver.resolve(recommendation.getItemOrCategory()), true, playerState);
+		return gearMatcher.ownershipForInventoryItem(itemResolver.resolve(recommendation.getItemOrCategory()), playerState);
 	}
 
 	private OwnershipState itemOwnership(RecommendedItem item)
 	{
-		return itemOwnership(item, false);
-	}
-
-	private OwnershipState itemOwnership(RecommendedItem item, boolean inventoryOnly)
-	{
-		return itemOwnership(item, inventoryOnly, currentResult.getPlayerState());
-	}
-
-	private OwnershipState itemOwnership(RecommendedItem item, boolean inventoryOnly, com.slayerprepassistant.bank.PlayerInventoryState playerState)
-	{
-		if (!inventoryOnly && itemResolver.matches(item.getName(), playerState.getEquipmentNames()))
-		{
-			return OwnershipState.EQUIPPED;
-		}
-		if (itemResolver.matches(item.getName(), playerState.getInventoryNames()))
-		{
-			return OwnershipState.OWNED_IN_INVENTORY;
-		}
-		if (!playerState.getBankSnapshot().isKnown())
-		{
-			return OwnershipState.UNKNOWN;
-		}
-		if (itemResolver.matches(item.getName(), playerState.getBankSnapshot().getItemNames()))
-		{
-			return OwnershipState.OWNED_IN_BANK;
-		}
-		return OwnershipState.MISSING;
+		return gearMatcher.ownershipFor(item, currentResult.getPlayerState());
 	}
 
 	private boolean hasBankData()
@@ -1070,95 +1019,7 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		{
 			return null;
 		}
-		String normalized = ItemResolver.normalize(item.getName());
-		if (itemIdCache.containsKey(normalized))
-		{
-			return itemIdCache.get(normalized);
-		}
-		Integer knownItemId = knownItemId(normalized);
-		if (knownItemId != null)
-		{
-			itemIdCache.put(normalized, knownItemId);
-			return knownItemId;
-		}
-		if (!item.getItemIds().isEmpty())
-		{
-			Integer itemId = item.getItemIds().iterator().next();
-			itemIdCache.put(normalized, itemId);
-			return itemId;
-		}
-		try
-		{
-			for (ItemPrice itemPrice : itemManager.search(item.getName()))
-			{
-				if (ItemResolver.normalize(itemPrice.getName()).equals(normalized))
-				{
-					itemIdCache.put(normalized, itemPrice.getId());
-					return itemPrice.getId();
-				}
-			}
-		}
-		catch (RuntimeException ex)
-		{
-			itemIdCache.put(normalized, null);
-			return null;
-		}
-		itemIdCache.put(normalized, null);
-		return null;
-	}
-
-	private Integer knownItemId(String normalized)
-	{
-		switch (normalized)
-		{
-			case "slayer helmet":
-				return ItemID.SLAYER_HELM;
-			case "slayer helmet i":
-				return ItemID.SLAYER_HELM_I;
-			case "infernal cape":
-				return ItemID.INFERNAL_CAPE;
-			case "rada s blessing 1":
-				return ItemID.ZEAH_BLESSING_EASY;
-			case "rada s blessing 2":
-				return ItemID.ZEAH_BLESSING_MEDIUM;
-			case "rada s blessing 3":
-				return ItemID.ZEAH_BLESSING_HARD;
-			case "rada s blessing 4":
-				return ItemID.ZEAH_BLESSING_ELITE;
-			case "v s shield":
-				return ItemID.V_SHIELD;
-			case "ferocious gloves":
-				return ItemID.FEROCIOUS_GLOVES;
-			case "ultor ring":
-				return ItemID.ULTOR_RING;
-			case "inquisitor s mace":
-				return ItemID.INQUISITORS_MACE;
-			case "inquisitor s hauberk":
-				return ItemID.INQUISITORS_BODY;
-			case "inquisitor s plateskirt":
-				return ItemID.INQUISITORS_SKIRT;
-			case "amulet of rancour":
-				return ItemID.AMULET_OF_RANCOUR;
-			case "avernic treads":
-				return ItemID.AVERNIC_TREADS;
-			case "avernic treads max":
-				return ItemID.AVERNIC_TREADS_MAX;
-			case "toxic blowpipe":
-				return ItemID.TOXIC_BLOWPIPE;
-			case "dragon dart":
-				return ItemID.DRAGON_DART;
-			case "zamorakian hasta":
-				return ItemID.ZAMORAK_HASTA;
-			case "abyssal whip":
-				return ItemID.ABYSSAL_WHIP;
-			case "rune crossbow":
-				return ItemID.XBOWS_CROSSBOW_RUNITE;
-			case "mystic hat":
-			case "wizard hat":
-				return ItemID.MYSTIC_HAT;
-			default:
-				return null;
-		}
+		return itemLookup == null ? null : itemLookup.itemId(item);
 	}
 
 	private static JPanel verticalPanel(Color background)
@@ -1255,9 +1116,8 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				return "Ranged";
 			case MAGIC:
 				return "Magic";
-			case GENERAL:
 			default:
-				return "General";
+				return method.toString();
 		}
 	}
 
@@ -1275,7 +1135,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 			case MAGIC:
 				itemName = "Wizard hat";
 				break;
-			case GENERAL:
 			default:
 				itemName = "";
 				break;
@@ -1345,290 +1204,4 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		repaint();
 	}
 
-	private class NoSetupIcon extends JComponent
-	{
-		NoSetupIcon()
-		{
-			setPreferredSize(new Dimension(62, 50));
-			setMinimumSize(new Dimension(62, 50));
-			setMaximumSize(new Dimension(62, 50));
-		}
-
-		@Override
-		protected void paintComponent(Graphics graphics)
-		{
-			super.paintComponent(graphics);
-			Graphics2D g = (Graphics2D) graphics.create();
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			int centerX = getWidth() / 2;
-
-			g.setColor(new Color(35, 35, 35));
-			g.fillOval(centerX - 20, 6, 40, 40);
-			g.setColor(new Color(87, 87, 87));
-			g.drawOval(centerX - 20, 6, 40, 40);
-
-			g.setColor(new Color(194, 194, 194));
-			g.fillOval(centerX - 15, 12, 30, 26);
-			g.fillRoundRect(centerX - 10, 30, 20, 11, 7, 7);
-
-			g.setColor(new Color(70, 70, 70));
-			g.fillOval(centerX - 10, 22, 8, 8);
-			g.fillOval(centerX + 2, 22, 8, 8);
-			g.fillOval(centerX - 3, 30, 6, 5);
-			g.drawLine(centerX - 6, 39, centerX - 6, 44);
-			g.drawLine(centerX, 39, centerX, 45);
-			g.drawLine(centerX + 6, 39, centerX + 6, 44);
-
-			g.setStroke(new BasicStroke(4f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-			g.setColor(GOLD);
-			g.drawArc(centerX - 31, 8, 22, 28, 105, 105);
-			g.drawArc(centerX + 9, 8, 22, 28, -30, 105);
-			g.dispose();
-		}
-	}
-
-	private class InventorySlotTile extends JComponent
-	{
-		private final RecommendedItem item;
-		private final int quantity;
-		private final OwnershipState state;
-		private Image image;
-
-		InventorySlotTile(RecommendedItem item, int quantity, OwnershipState state)
-		{
-			this.item = item;
-			this.quantity = quantity;
-			this.state = state;
-			this.image = itemImage(item, 28);
-			setPreferredSize(new Dimension(42, 42));
-			setMinimumSize(new Dimension(42, 42));
-			if (this.image == null)
-			{
-				loadWikiItemImage(item, 28, image ->
-				{
-					this.image = image;
-					repaint();
-				});
-			}
-		}
-
-		@Override
-		protected void paintComponent(Graphics graphics)
-		{
-			super.paintComponent(graphics);
-			Graphics2D g = (Graphics2D) graphics.create();
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			int width = getWidth();
-			int height = getHeight();
-			boolean empty = item == null || item.getName() == null || item.getName().trim().isEmpty();
-			Color borderColor = empty ? BORDER : statusColor(state);
-
-			g.setColor(new Color(18, 18, 18));
-			g.fillRoundRect(0, 0, width, height, CONTROL_RADIUS, CONTROL_RADIUS);
-			g.setColor(empty ? new Color(24, 24, 24) : new Color(31, 31, 31));
-			g.fillRoundRect(1, 1, width - 2, height - 2, CONTROL_RADIUS, CONTROL_RADIUS);
-			g.setColor(borderColor);
-			g.drawRoundRect(0, 0, width - 1, height - 1, CONTROL_RADIUS, CONTROL_RADIUS);
-
-			if (!empty)
-			{
-				g.fillRect(1, height - 4, width - 2, 3);
-				drawItem(g, width, height);
-				drawQuantity(g, width);
-			}
-			g.dispose();
-		}
-
-		private void drawItem(Graphics2D g, int width, int height)
-		{
-			if (image != null)
-			{
-				int x = (width - image.getWidth(null)) / 2;
-				int y = (height - image.getHeight(null)) / 2 - 1;
-				g.drawImage(image, x, y, null);
-				return;
-			}
-			String fallback = item.getName().substring(0, 1).toUpperCase(java.util.Locale.ROOT);
-			g.setFont(getFont().deriveFont(Font.BOLD, FONT_SM));
-			g.setColor(MUTED);
-			int textWidth = g.getFontMetrics().stringWidth(fallback);
-			g.drawString(fallback, (width - textWidth) / 2, height / 2 + 5);
-		}
-
-		private void drawQuantity(Graphics2D g, int width)
-		{
-			if (quantity <= 0)
-			{
-				return;
-			}
-			String text = String.valueOf(quantity);
-			g.setFont(getFont().deriveFont(Font.BOLD, FONT_XS));
-			int textWidth = g.getFontMetrics().stringWidth(text);
-			int badgeWidth = Math.max(13, textWidth + 6);
-			g.setColor(new Color(15, 15, 15));
-			g.fillRect(width - badgeWidth - 2, 2, badgeWidth, 14);
-			g.setColor(GOLD);
-			g.drawRect(width - badgeWidth - 2, 2, badgeWidth, 14);
-			g.drawString(text, width - badgeWidth + 1, 13);
-		}
-	}
-
-	private class SkeletonSection extends RoundedPanel
-	{
-		SkeletonSection(String title, int rows, boolean equipment)
-		{
-			super(new BorderLayout(0, 6), PANEL, CARD_RADIUS);
-			setBorder(compoundBorder());
-			setAlignmentX(Component.LEFT_ALIGNMENT);
-			JPanel header = new JPanel(new BorderLayout());
-			header.setBackground(PANEL);
-			header.add(label(title, GOLD, Font.BOLD, FONT_SM), BorderLayout.WEST);
-			add(header, BorderLayout.NORTH);
-
-			JPanel body = equipment ? skeletonEquipmentRows(rows) : skeletonInventoryRows(rows);
-			add(body, BorderLayout.CENTER);
-			fitHeight(this);
-		}
-
-		private JPanel skeletonEquipmentRows(int rows)
-		{
-			JPanel panel = verticalPanel(PANEL);
-			for (int i = 0; i < rows; i++)
-			{
-				JPanel row = new JPanel(new BorderLayout(7, 0));
-				row.setBackground(i % 2 == 0 ? new Color(32, 32, 32) : new Color(27, 27, 27));
-				row.setBorder(BorderFactory.createEmptyBorder(4, 3, 4, 0));
-				row.add(new SkeletonBlock(30, 30, CONTROL_RADIUS), BorderLayout.WEST);
-
-				JPanel text = verticalPanel(row.getBackground());
-				text.add(new SkeletonBlock(56, 8, CONTROL_RADIUS));
-				text.add(spacer(4));
-				text.add(new SkeletonBlock(i % 3 == 0 ? 96 : 120, 10, CONTROL_RADIUS));
-				row.add(text, BorderLayout.CENTER);
-				row.add(new SkeletonBlock(42, 10, CONTROL_RADIUS), BorderLayout.EAST);
-				panel.add(row);
-			}
-			return panel;
-		}
-
-		private JPanel skeletonInventoryRows(int rows)
-		{
-			JPanel panel = verticalPanel(PANEL);
-			JPanel grid = new JPanel(new GridLayout(0, 4, 5, 5));
-			grid.setBackground(PANEL);
-			for (int i = 0; i < rows * 4; i++)
-			{
-				grid.add(new SkeletonBlock(42, 42, CONTROL_RADIUS));
-			}
-			panel.add(grid);
-			return panel;
-		}
-	}
-
-	private class SkeletonBlock extends JComponent
-	{
-		private final int preferredWidth;
-		private final int preferredHeight;
-		private final int radius;
-
-		SkeletonBlock(int preferredWidth, int preferredHeight, int radius)
-		{
-			this.preferredWidth = preferredWidth;
-			this.preferredHeight = preferredHeight;
-			this.radius = radius;
-			setPreferredSize(new Dimension(preferredWidth, preferredHeight));
-			setMinimumSize(new Dimension(preferredWidth, preferredHeight));
-			setMaximumSize(new Dimension(preferredWidth, preferredHeight));
-		}
-
-		@Override
-		protected void paintComponent(Graphics graphics)
-		{
-			Graphics2D g = (Graphics2D) graphics.create();
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			int pulse = Math.abs(6 - skeletonFrame);
-			int shade = 43 + pulse * 4;
-			g.setColor(new Color(shade, shade, shade));
-			g.fillRoundRect(0, 0, getWidth(), getHeight(), radius, radius);
-			g.setColor(new Color(74, 74, 74, 80));
-			int shimmerX = (skeletonFrame * (getWidth() + 16) / 12) - 16;
-			g.fillRoundRect(shimmerX, 0, Math.max(8, getWidth() / 3), getHeight(), radius, radius);
-			g.dispose();
-		}
-	}
-
-	private class CollapsibleSection extends RoundedPanel
-	{
-		private final JPanel body;
-		private boolean open;
-
-		CollapsibleSection(String title, String summary, boolean defaultOpen, JPanel body)
-		{
-			super(new BorderLayout(0, 5), PANEL, CARD_RADIUS);
-			this.body = body;
-			this.open = defaultOpen;
-			setBorder(compoundBorder());
-			setAlignmentX(Component.LEFT_ALIGNMENT);
-
-			JButton header = new JButton(title + (summary == null || summary.isEmpty() ? "" : "  " + summary) + "  " + (open ? "v" : ">"));
-			styledButton(header);
-			header.setHorizontalAlignment(SwingConstants.LEFT);
-			header.addActionListener(event ->
-			{
-				open = !open;
-				this.body.setVisible(open);
-				header.setText(title + (summary == null || summary.isEmpty() ? "" : "  " + summary) + "  " + (open ? "v" : ">"));
-				refreshUi();
-			});
-			add(header, BorderLayout.NORTH);
-			body.setVisible(open);
-			add(body, BorderLayout.CENTER);
-		}
-	}
-
-	private class CircularReadinessBadge extends JComponent
-	{
-		private int percent;
-		private boolean visibleValue;
-
-		CircularReadinessBadge()
-		{
-			setPreferredSize(new Dimension(58, 58));
-			setMinimumSize(new Dimension(58, 58));
-			setMaximumSize(new Dimension(58, 58));
-		}
-
-		void setReadiness(int percent, boolean visibleValue)
-		{
-			this.percent = Math.max(0, Math.min(100, percent));
-			this.visibleValue = visibleValue;
-			repaint();
-		}
-
-		@Override
-		protected void paintComponent(Graphics graphics)
-		{
-			super.paintComponent(graphics);
-			Graphics2D g = (Graphics2D) graphics.create();
-			g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-			int size = Math.min(getWidth(), getHeight()) - 8;
-			int x = (getWidth() - size) / 2;
-			int y = (getHeight() - size) / 2;
-			g.setStroke(new BasicStroke(6f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
-			g.setColor(new Color(50, 50, 50));
-			g.drawOval(x, y, size, size);
-			Color color = percent < 70 ? RED : percent < 90 ? YELLOW : GREEN;
-			g.setColor(visibleValue ? color : MUTED);
-			g.drawArc(x, y, size, size, 90, -Math.round(360f * percent / 100f));
-			g.setFont(getFont().deriveFont(Font.BOLD, FONT_XL));
-			String percentText = visibleValue ? percent + "%" : "--";
-			int textWidth = g.getFontMetrics().stringWidth(percentText);
-			g.drawString(percentText, (getWidth() - textWidth) / 2, getHeight() / 2 - 1);
-			g.setFont(getFont().deriveFont(Font.BOLD, FONT_XS));
-			String label = visibleValue ? "Ready" : "";
-			int labelWidth = g.getFontMetrics().stringWidth(label);
-			g.drawString(label, (getWidth() - labelWidth) / 2, getHeight() / 2 + 13);
-			g.dispose();
-		}
-	}
 }

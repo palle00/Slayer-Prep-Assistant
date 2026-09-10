@@ -3,6 +3,8 @@ package com.slayerprepassistant.gear;
 import com.slayerprepassistant.bank.OwnershipState;
 import com.slayerprepassistant.bank.PlayerInventoryState;
 import com.slayerprepassistant.items.ItemResolver;
+
+import java.util.Collections;
 import java.util.Set;
 
 public class GearMatcher
@@ -21,51 +23,58 @@ public class GearMatcher
 
 	public OwnershipState ownershipFor(RecommendedItem item, PlayerInventoryState state)
 	{
+		return ownershipFor(item, state, true);
+	}
+
+	public OwnershipState ownershipForInventoryItem(RecommendedItem item, PlayerInventoryState state)
+	{
+		return ownershipFor(item, state, false);
+	}
+
+	private OwnershipState ownershipFor(RecommendedItem item, PlayerInventoryState state, boolean includeEquipment)
+	{
+		if (item == null || state == null)
+		{
+			return OwnershipState.UNKNOWN;
+		}
+
 		Set<Integer> itemIds = item.getItemIds();
-		if (!itemIds.isEmpty() && containsAny(state.getEquipment().keySet(), itemIds))
+
+		if (includeEquipment && containsItem(itemIds, item.getName(), state.getEquipment().keySet(), state.getEquipmentNames()))
 		{
 			return OwnershipState.EQUIPPED;
 		}
-		if (itemResolver.matches(item.getName(), state.getEquipmentNames()))
-		{
-			return OwnershipState.EQUIPPED;
-		}
-		if (!itemIds.isEmpty() && containsAny(state.getInventory().keySet(), itemIds))
+
+		if (containsItem(itemIds, item.getName(), state.getInventory().keySet(), state.getInventoryNames()))
 		{
 			return OwnershipState.OWNED_IN_INVENTORY;
 		}
-		if (itemResolver.matches(item.getName(), state.getInventoryNames()))
-		{
-			return OwnershipState.OWNED_IN_INVENTORY;
-		}
+
 		if (!state.getBankSnapshot().isKnown())
 		{
 			return OwnershipState.UNKNOWN;
 		}
-		if (!itemIds.isEmpty() && state.getBankSnapshot().containsAny(itemIds))
+
+		boolean bankIdMatch = !itemIds.isEmpty() && state.getBankSnapshot().containsAny(itemIds);
+		boolean bankNameMatch = itemResolver.matches(item.getName(), state.getBankSnapshot().getItemNames());
+		if (bankIdMatch || bankNameMatch)
 		{
 			return OwnershipState.OWNED_IN_BANK;
 		}
-		if (itemResolver.matches(item.getName(), state.getBankSnapshot().getItemNames()))
+
+		if (!includeEquipment)
 		{
-			return OwnershipState.OWNED_IN_BANK;
+			return OwnershipState.MISSING;
 		}
-		if (itemIds.isEmpty())
-		{
-			return OwnershipState.UNKNOWN;
-		}
-		return OwnershipState.MISSING;
+		return itemIds.isEmpty() ? OwnershipState.UNKNOWN : OwnershipState.MISSING;
 	}
 
-	private boolean containsAny(Set<Integer> ownedIds, Set<Integer> candidateIds)
+	private boolean containsItem(Set<Integer> targetIds, String itemName, Set<Integer> containerIds, Set<String> containerNames)
 	{
-		for (Integer candidateId : candidateIds)
+		if (!targetIds.isEmpty() && !Collections.disjoint(containerIds, targetIds))
 		{
-			if (ownedIds.contains(candidateId))
-			{
-				return true;
-			}
+			return true;
 		}
-		return false;
+		return itemResolver.matches(itemName, containerNames);
 	}
 }

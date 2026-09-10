@@ -5,7 +5,6 @@ import net.runelite.api.Client;
 import net.runelite.api.gameval.DBTableID;
 import net.runelite.api.gameval.VarPlayerID;
 import net.runelite.api.gameval.VarbitID;
-import net.runelite.client.config.ConfigManager;
 
 public class SlayerTaskService
 {
@@ -13,10 +12,6 @@ public class SlayerTaskService
 
 	private final TaskChatMessageParser chatMessageParser = new TaskChatMessageParser();
 	private SlayerTaskContext chatDetectedTask = SlayerTaskContext.none();
-
-	public SlayerTaskService(ConfigManager configManager)
-	{
-	}
 
 	public SlayerTaskContext getCurrentTask()
 	{

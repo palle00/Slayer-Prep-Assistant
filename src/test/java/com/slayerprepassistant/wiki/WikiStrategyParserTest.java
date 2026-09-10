@@ -50,6 +50,47 @@ public class WikiStrategyParserTest
 	}
 
 	@Test
+	public void parsesDustDevilTabbedInventoryAndSameLineTabLabels()
+	{
+		String text = "==Equipment==\n"
+			+ "<tabber>\n"
+			+ "|-|\n"
+			+ "Magic (Barrage)=\n"
+			+ "{{Inventory\n"
+			+ "|align = right|Toxic blowpipe|Prayer potion|Prayer potion|Silklined herb sack|Gem bag|Dinh's bulwark|||||||||||||||||Bracelet of slaughter|Bracelet of slaughter|Explorer's ring 4|Bonecrusher|Teleport to house (tablet)|Rune pouch\n"
+			+ "}}\n"
+			+ "{{Recommended equipment\n"
+			+ "|style = Magic (Barrage)\n"
+			+ "|head1 = {{plink|Slayer helmet (i)}}\n"
+			+ "|body1 = {{Plink|Virtus robe top}}\n"
+			+ "|hands1 = {{plink|Bracelet of slaughter}} / {{plink|Expeditious bracelet}}\n"
+			+ "|feet1 = {{plink|Avernic treads (max)}}\n"
+			+ "}}\n"
+			+ "|-|Melee (Hallowfell)=\n"
+			+ "{{Recommended equipment\n"
+			+ "|style = Melee\n"
+			+ "|head1 = {{plink|Slayer helmet (i)}}\n"
+			+ "|body1 = {{plink|Torva platebody}} > {{plink|Oathplate chest}}\n"
+			+ "|hands1 = {{plink|Expeditious bracelet}} / {{plink|Bracelet of slaughter}}\n"
+			+ "|feet1 = {{plink|Avernic treads (max)}}\n"
+			+ "|weapon1 = {{plink|Hallowfell}}\n"
+			+ "}}\n"
+			+ "</tabber>";
+
+		WikiParsingResult result = new WikiStrategyParser().parse("Dust devils", "Slayer task/Dust devils", "https://oldschool.runescape.wiki/w/Slayer_task/Dust_devils", 15319311, text);
+
+		assertEquals(2, result.getGuide().getMethods().size());
+		assertEquals(CombatMethod.MAGIC, result.getGuide().getMethods().get(0).getMethod());
+		assertEquals(CombatMethod.MELEE, result.getGuide().getMethods().get(1).getMethod());
+		assertEquals("Toxic blowpipe", result.getGuide().getMethods().get(0).getInventory().get(0).getItemOrCategory());
+		assertEquals("Prayer potion", result.getGuide().getMethods().get(0).getInventory().get(1).getItemOrCategory());
+		assertEquals(2, result.getGuide().getMethods().get(0).getInventory().get(1).getMinimumQuantity());
+		assertFalse(result.getGuide().getMethods().get(1).getGear().stream().noneMatch(recommendation -> recommendation.getSlot() == GearSlot.BODY));
+		assertFalse(result.getGuide().getMethods().get(1).getGear().stream().noneMatch(recommendation -> recommendation.getSlot() == GearSlot.HANDS));
+		assertFalse(result.getGuide().getMethods().get(1).getGear().stream().noneMatch(recommendation -> recommendation.getSlot() == GearSlot.FEET));
+	}
+
+	@Test
 	public void preservesRecommendedEquipmentTemplateRankOrder()
 	{
 		String text = "==Equipment==\n"
@@ -155,5 +196,39 @@ public class WikiStrategyParserTest
 			.get();
 		assertEquals(1, weapon.getTiers().get(0).getAlternatives().size());
 		assertEquals("Zamorakian hasta", weapon.getTiers().get(0).getAlternatives().get(0).getName());
+	}
+
+	@Test
+	public void renderedEquipmentParsesImageOnlyWikiSlots()
+	{
+		String text = "# Ranged equipment\n"
+			+ "Weapon: Rune crossbow";
+		String html = "<div class=\"tabbertab\" data-title=\"Ranged\">"
+			+ "<div class=\"equipment-div\">"
+			+ "<div class=\"equipment-head equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Void_ranger_helm.png?75a26)</span></div></div>"
+			+ "<div class=\"equipment-cape equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Dizana%27s_quiver.png?f8a45)</span></div></div>"
+			+ "<div class=\"equipment-neck equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Salve_amulet%28ei%29.png?a8fa6)</span></div></div>"
+			+ "<div class=\"equipment-ammo equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Ruby_dragon_bolts_%28e%29_5.png?8d2f7)</span></div></div>"
+			+ "<div class=\"equipment-ammo2\"><div class=\"equipment-plinkp\"></div></div>"
+			+ "<div class=\"equipment-weapon equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Dragon_hunter_crossbow.png?cc5f3)</span></div></div>"
+			+ "<div class=\"equipment-torso equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Elite_void_top.png?7a7c0)</span></div></div>"
+			+ "<div class=\"equipment-shield equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Dragonfire_ward.png?cc5f3)</span></div></div>"
+			+ "<div class=\"equipment-legs equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Elite_void_robe.png?090e3)</span></div></div>"
+			+ "<div class=\"equipment-gloves equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Void_knight_gloves.png?75a26)</span></div></div>"
+			+ "<div class=\"equipment-boots equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Avernic_treads_%28max%29.png?301a3)</span></div></div>"
+			+ "<div class=\"equipment-ring equipment-blank\"><div class=\"equipment-plinkp\"><span>![](/images/Lightbearer.png?6da96)</span></div></div>"
+			+ "</div></div>";
+
+		WikiParsingResult source = new WikiStrategyParser().parse("Vorkath", "Vorkath/Strategies", "https://oldschool.runescape.wiki/w/Vorkath/Strategies", 789, text);
+		WikiParsingResult result = new WikiStrategyParser().mergeRenderedHtml(source, html);
+
+		assertEquals("Void ranger helm", result.getGuide().getMethods().get(0).getGear().get(0).getTiers().get(0).getAlternatives().get(0).getName());
+		assertEquals("Dizana's quiver", result.getGuide().getMethods().get(0).getGear().get(1).getTiers().get(0).getAlternatives().get(0).getName());
+		assertEquals("Salve amulet(ei)", result.getGuide().getMethods().get(0).getGear().get(2).getTiers().get(0).getAlternatives().get(0).getName());
+		assertEquals("Ruby dragon bolts (e)", result.getGuide().getMethods().get(0).getGear().get(3).getTiers().get(0).getAlternatives().get(0).getName());
+		assertEquals("Dragon hunter crossbow", result.getGuide().getMethods().get(0).getGear().get(4).getTiers().get(0).getAlternatives().get(0).getName());
+		assertEquals("Elite void top", result.getGuide().getMethods().get(0).getGear().get(5).getTiers().get(0).getAlternatives().get(0).getName());
+		assertEquals("Void knight gloves", result.getGuide().getMethods().get(0).getGear().get(8).getTiers().get(0).getAlternatives().get(0).getName());
+		assertEquals("Avernic treads (max)", result.getGuide().getMethods().get(0).getGear().get(9).getTiers().get(0).getAlternatives().get(0).getName());
 	}
 }

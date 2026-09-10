@@ -14,11 +14,6 @@ public class BankSnapshotService
 {
 	private BankSnapshot snapshot = BankSnapshot.emptyUnknown();
 
-	public void updateFromBankContainer(ItemContainer container)
-	{
-		updateFromBankContainer(container, null);
-	}
-
 	public void updateFromBankContainer(ItemContainer container, Client client)
 	{
 		if (container == null)

@@ -25,14 +25,14 @@ public class WikiStrategyParserTest
 	@Test
 	public void parsesMonsterVariantsFromWikiSection()
 	{
-		String text = "==Monster variants==\n{| class=\"wikitable\"\n|-\n| [[Abyssal demon]]\n|-\n| [[Greater abyssal demon|Greater Abyssal Demon]]\n|-\n| [[File:Ignored.png]]\n|}";
+		String text = "==Monster variants==\n{| class=\"wikitable\"\n|-\n| [[Bank filler]]\n|-\n| [[Seed pack|Seed Pack]]\n|-\n| [[File:Ignored.png]]\n|}";
 
-		WikiParsingResult result = new WikiStrategyParser().parse("Abyssal demons", "Abyssal demon", "https://oldschool.runescape.wiki/w/Abyssal_demon", 456, text);
+		WikiParsingResult result = new WikiStrategyParser().parse("Bank fillers", "Bank filler", "https://oldschool.runescape.wiki/w/Bank_filler", 456, text);
 
 		assertEquals(2, result.getVariants().size());
-		assertEquals("Abyssal demon", result.getVariants().get(0).getDisplayName());
-		assertEquals("Greater Abyssal Demon", result.getVariants().get(1).getDisplayName());
-		assertEquals("Greater abyssal demon", result.getVariants().get(1).getWikiPageTitle());
+		assertEquals("Bank filler", result.getVariants().get(0).getDisplayName());
+		assertEquals("Seed Pack", result.getVariants().get(1).getDisplayName());
+		assertEquals("Seed pack", result.getVariants().get(1).getWikiPageTitle());
 	}
 
 	@Test
@@ -153,7 +153,7 @@ public class WikiStrategyParserTest
 	public void renderedEquipmentDoesNotLeakLaterItemsIntoBlankSlots()
 	{
 		String text = "# Melee equipment\n"
-			+ "Weapon: Abyssal whip";
+			+ "Weapon: Bank filler";
 		String html = "<div class=\"tabbertab\" data-title=\"Melee\">"
 			+ "<table class=\"equipment equipment-right\"><tbody><tr><td>"
 			+ "<div class=\"equipment-div\">"
@@ -177,7 +177,7 @@ public class WikiStrategyParserTest
 	public void renderedEquipmentIgnoresSlotPlaceholders()
 	{
 		String text = "# Melee equipment\n"
-			+ "Weapon: Abyssal whip";
+			+ "Weapon: Bank filler";
 		String html = "<div class=\"tabbertab\" data-title=\"Melee\">"
 			+ "<table class=\"equipment equipment-right\"><tbody><tr><td>"
 			+ "<div class=\"equipment-div\">"
@@ -297,7 +297,7 @@ public class WikiStrategyParserTest
 			+ "</div></td></tr></tbody></table>"
 			+ "</div></div>";
 
-		WikiParsingResult source = new WikiStrategyParser().parse("Abyssal demons", "Slayer task/Abyssal demons", "https://oldschool.runescape.wiki/w/Slayer_task/Abyssal_demons", 15311146, text);
+		WikiParsingResult source = new WikiStrategyParser().parse("Bank fillers", "Slayer task/Bank fillers", "https://oldschool.runescape.wiki/w/Slayer_task/Bank_fillers", 15311146, text);
 		WikiParsingResult result = new WikiStrategyParser().mergeRenderedHtml(source, html);
 
 		assertEquals("Amulet of rancour", itemForSlot(result, GearSlot.NECK));

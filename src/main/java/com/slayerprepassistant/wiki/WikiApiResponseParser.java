@@ -108,12 +108,7 @@ class WikiApiResponseParser
 		}
 	}
 
-	String pageImageUrl(String title, String json)
-	{
-		return pageImageUrls(Collections.singletonList(title), json).getOrDefault(WikiTitles.cacheKey(title), "");
-	}
-
-	Map<String, String> pageImageUrls(List<String> requestedTitles, String json)
+	Map<String, String> pageImageSources(List<String> requestedTitles, String json)
 	{
 		Map<String, String> result = new LinkedHashMap<>();
 		if (requestedTitles == null || requestedTitles.isEmpty())
@@ -133,7 +128,7 @@ class WikiApiResponseParser
 			Map<String, String> aliases = new HashMap<>();
 			collectAliases(query, "normalized", aliases);
 			collectAliases(query, "redirects", aliases);
-			Map<String, String> imagesByTitle = new HashMap<>();
+			Map<String, String> imageSourcesByTitle = new HashMap<>();
 			for (Map.Entry<String, JsonElement> entry : pages.entrySet())
 			{
 				JsonElement value = entry.getValue();
@@ -144,15 +139,15 @@ class WikiApiResponseParser
 				JsonObject page = value.getAsJsonObject();
 				String pageTitle = page.has("title") ? page.get("title").getAsString() : "";
 				JsonObject thumbnail = page.getAsJsonObject("thumbnail");
-				String imageUrl = thumbnail != null && thumbnail.has("source") ? thumbnail.get("source").getAsString() : "";
-				imagesByTitle.put(WikiTitles.cacheKey(pageTitle), imageUrl);
+				String imageSource = thumbnail != null && thumbnail.has("source") ? thumbnail.get("source").getAsString() : "";
+				imageSourcesByTitle.put(WikiTitles.cacheKey(pageTitle), imageSource);
 			}
 
 			for (String requestedTitle : requestedTitles)
 			{
 				String requestedKey = WikiTitles.cacheKey(requestedTitle);
 				String resolvedKey = resolveAlias(requestedKey, aliases);
-				result.put(requestedKey, imagesByTitle.getOrDefault(resolvedKey, imagesByTitle.getOrDefault(requestedKey, "")));
+				result.put(requestedKey, imageSourcesByTitle.getOrDefault(resolvedKey, imageSourcesByTitle.getOrDefault(requestedKey, "")));
 			}
 			return result;
 		}

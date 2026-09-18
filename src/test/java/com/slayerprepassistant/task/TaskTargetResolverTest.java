@@ -33,9 +33,9 @@ public class TaskTargetResolverTest
 	@Test
 	public void multiWordTaskKeepsWikiTitleCase()
 	{
-		List<TargetOption> targets = resolver.resolve(new SlayerTaskContext("Aberrant Spectres", 106, 106, "", true));
+		List<TargetOption> targets = resolver.resolve(new SlayerTaskContext("Bank Fillers", 106, 106, "", true));
 
 		assertEquals(1, targets.size());
-		assertEquals("Aberrant spectres", targets.get(0).getWikiPage());
+		assertEquals("Bank fillers", targets.get(0).getWikiPage());
 	}
 }

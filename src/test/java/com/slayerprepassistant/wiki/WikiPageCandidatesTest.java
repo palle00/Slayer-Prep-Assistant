@@ -11,11 +11,11 @@ public class WikiPageCandidatesTest
 	@Test
 	public void strategyPagesKeepPreferredFirstAndRemoveDuplicates()
 	{
-		TargetOption target = new TargetOption("Aberrant spectres", "Aberrant spectres", "Strategies/Aberrant spectres");
+		TargetOption target = new TargetOption("Bank fillers", "Bank fillers", "Strategies/Bank fillers");
 
 		assertEquals(
-			Arrays.asList("Aberrant spectres/Strategies", "Strategies/Aberrant spectres", "Strategies/Aberrant spectre", "Aberrant spectre/Strategies", "Slayer_task/Aberrant spectres", "Slayer_task/Aberrant spectre"),
-			WikiPageCandidates.strategyPages(target, "Aberrant spectres/Strategies"));
+			Arrays.asList("Bank fillers/Strategies", "Strategies/Bank fillers", "Strategies/Bank filler", "Bank filler/Strategies", "Slayer_task/Bank fillers", "Slayer_task/Bank filler"),
+			WikiPageCandidates.strategyPages(target, "Bank fillers/Strategies"));
 	}
 
 	@Test

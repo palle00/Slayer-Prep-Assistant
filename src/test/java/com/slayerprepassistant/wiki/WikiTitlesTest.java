@@ -10,26 +10,26 @@ public class WikiTitlesTest
 	public void pageUrlBuildsBrowserSafeWikiUrl()
 	{
 		assertEquals(
-			"https://oldschool.runescape.wiki/w/Aberrant_spectres",
-			WikiTitles.pageUrl("Aberrant spectres"));
+			"https://oldschool.runescape.wiki/w/Bank_filler",
+			WikiTitles.pageUrl("Bank filler"));
 	}
 
 	@Test
 	public void singularTitleRemovesSimplePluralSuffix()
 	{
-		assertEquals("Aberrant spectre", WikiTitles.singularTitle("Aberrant spectres"));
+		assertEquals("Bank filler", WikiTitles.singularTitle("Bank fillers"));
 	}
 
 	@Test
 	public void wikiTitleNormalizesMonsterNames()
 	{
-		assertEquals("Aberrant spectres", WikiTitles.wikiTitle("Aberrant Spectres"));
-		assertEquals("Greater abyssal demon", WikiTitles.wikiTitle("Greater abyssal demon"));
+		assertEquals("Bank fillers", WikiTitles.wikiTitle("Bank Fillers"));
+		assertEquals("Bank filler", WikiTitles.wikiTitle("Bank filler"));
 	}
 
 	@Test
 	public void cacheKeyNormalizesCaseAndWhitespace()
 	{
-		assertEquals("abyssal demons", WikiTitles.cacheKey("  Abyssal Demons  "));
+		assertEquals("bank fillers", WikiTitles.cacheKey("  Bank Fillers  "));
 	}
 }

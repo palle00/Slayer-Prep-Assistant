@@ -136,7 +136,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 	private final JLabel taskStatusLabel = new JLabel("No active task");
 	private final JLabel taskNameLabel = new JLabel("No Slayer task detected");
 	private final JLabel taskMetaLabel = new JLabel("Check your Slayer helmet or gem.");
-	private final JLabel taskProgressLabel = new JLabel();
 	private final JLabel taskIconLabel = new JLabel();
 	private final JProgressBar taskProgressBar = new JProgressBar();
 	private final JLabel targetLabel = new JLabel("No target selected");
@@ -229,7 +228,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				taskStatusLabel.setForeground(activeTask ? GREEN : MUTED);
 				taskNameLabel.setText(wrapHtml(taskName, TASK_TEXT_WIDTH, false));
 				taskMetaLabel.setText(wrapHtml(taskMeta, TASK_TEXT_WIDTH, false));
-				taskProgressLabel.setText(progressText);
 				updateTaskProgress(taskContext);
 				fitHeight(taskCardPanel);
 				lastTaskRenderKey = taskRenderKey;
@@ -383,8 +381,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		taskMetaLabel.setForeground(MUTED);
 		taskMetaLabel.setFont(taskMetaLabel.getFont().deriveFont(Font.PLAIN, FONT_SM));
 		taskMetaLabel.setVerticalAlignment(SwingConstants.TOP);
-		taskProgressLabel.setForeground(BLUE);
-		taskProgressLabel.setFont(taskProgressLabel.getFont().deriveFont(Font.PLAIN, FONT_XS));
 		styleTaskProgressBar();
 		text.add(caption);
 		text.add(spacer(1));
@@ -393,7 +389,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		text.add(taskProgressBar);
 		text.add(spacer(3));
 		text.add(taskMetaLabel);
-		text.add(taskProgressLabel);
 		row.add(text, BorderLayout.CENTER);
 
 		panel.add(row, BorderLayout.CENTER);
@@ -961,8 +956,12 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		text.add(wrappedLabel(itemName, TEXT, FONT_SM, GEAR_TEXT_WIDTH, false));
 		row.add(text, BorderLayout.CENTER);
 
-		JPanel status = statusLabel(match.getOwnershipState());
-		row.add(status, BorderLayout.EAST);
+		JLabel expandIndicator = label(">", MUTED, true, FONT_SM);
+		JPanel rowMeta = new JPanel(new BorderLayout(4, 0));
+		rowMeta.setOpaque(false);
+		rowMeta.add(statusLabel(match.getOwnershipState()), BorderLayout.CENTER);
+		rowMeta.add(expandIndicator, BorderLayout.EAST);
+		row.add(rowMeta, BorderLayout.EAST);
 
 		wrapper.add(row);
 
@@ -978,10 +977,21 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 		Border hoverBorder = BorderFactory.createCompoundBorder(
 				BorderFactory.createMatteBorder(0, 2, 1, 0, GOLD),
 				BorderFactory.createEmptyBorder(0, 0, 0, 0));
+		Color expandedBackground = missing ? new Color(55, 32, 27) : new Color(43, 38, 27);
+		Border expandedBorder = BorderFactory.createCompoundBorder(
+				BorderFactory.createMatteBorder(0, 3, 1, 0, GOLD),
+				BorderFactory.createEmptyBorder(0, 0, 0, 0));
 
 		Timer singleClickTimer = new Timer(220, event ->
 		{
-			alternatives.setVisible(!alternatives.isVisible());
+			boolean expanded = !alternatives.isVisible();
+			alternatives.setVisible(expanded);
+			expandIndicator.setText(expanded ? "v" : ">");
+			expandIndicator.setForeground(expanded ? GOLD : MUTED);
+			wrapper.setBorder(expanded ? expandedBorder : normalBorder);
+			setBackgroundRecursive(wrapper, expanded ? expandedBackground : rowBackground);
+			alternatives.setBackground(new Color(18, 19, 19));
+			setBackgroundRecursive(alternatives, new Color(18, 19, 19));
 			refreshUi();
 		});
 		singleClickTimer.setRepeats(false);
@@ -991,18 +1001,22 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 			@Override
 			public void mouseEntered(MouseEvent event)
 			{
-				wrapper.setBorder(hoverBorder);
-				setBackgroundRecursive(wrapper, hoverBackground);
+				boolean expanded = alternatives.isVisible();
+				wrapper.setBorder(expanded ? expandedBorder : hoverBorder);
+				setBackgroundRecursive(wrapper, expanded ? expandedBackground : hoverBackground);
+				expandIndicator.setForeground(expanded ? GOLD : Color.WHITE);
 				row.repaint();
 			}
 
 			@Override
 			public void mouseExited(MouseEvent event)
 			{
-				wrapper.setBorder(normalBorder);
-				setBackgroundRecursive(wrapper, rowBackground);
-				alternatives.setBackground(PANEL_LIGHT);
-				setBackgroundRecursive(alternatives, PANEL_LIGHT);
+				boolean expanded = alternatives.isVisible();
+				wrapper.setBorder(expanded ? expandedBorder : normalBorder);
+				setBackgroundRecursive(wrapper, expanded ? expandedBackground : rowBackground);
+				expandIndicator.setForeground(expanded ? GOLD : MUTED);
+				alternatives.setBackground(new Color(18, 19, 19));
+				setBackgroundRecursive(alternatives, new Color(18, 19, 19));
 				row.repaint();
 			}
 
@@ -1587,7 +1601,6 @@ public class SlayerPrepAssistantPanel extends PluginPanel
 				&& taskContext.getInitialAmount() > 0
 				&& taskContext.getRemainingAmount() <= taskContext.getInitialAmount();
 		taskProgressBar.setVisible(showProgress);
-		taskProgressLabel.setVisible(showProgress);
 		if (!showProgress)
 		{
 			taskProgressBar.setValue(0);

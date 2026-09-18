@@ -13,27 +13,27 @@ public class TaskChatMessageParserTest
 	@Test
 	public void parsesRemainingTaskMessage()
 	{
-		SlayerTaskContext context = parser.parse("You have 148 Abyssal Demons remaining.", SlayerTaskContext.none()).get();
+		SlayerTaskContext context = parser.parse("You have 148 Bank Fillers remaining.", SlayerTaskContext.none()).get();
 
 		assertTrue(context.isActive());
-		assertEquals("Abyssal Demons", context.getTaskName());
+		assertEquals("Bank Fillers", context.getTaskName());
 		assertEquals(148, context.getRemainingAmount());
 	}
 
 	@Test
 	public void parsesTaskStatusMessageWithoutCount()
 	{
-		SlayerTaskContext context = parser.parse("You have a Slayer task: Abyssal Demons.", SlayerTaskContext.none()).get();
+		SlayerTaskContext context = parser.parse("You have a Slayer task: Bank Fillers.", SlayerTaskContext.none()).get();
 
 		assertTrue(context.isActive());
-		assertEquals("Abyssal Demons", context.getTaskName());
+		assertEquals("Bank Fillers", context.getTaskName());
 		assertEquals(0, context.getRemainingAmount());
 	}
 
 	@Test
 	public void parsesCompletionMessage()
 	{
-		SlayerTaskContext previous = new SlayerTaskContext("Abyssal demons", 1, 150, "", true);
+		SlayerTaskContext previous = new SlayerTaskContext("Bank fillers", 1, 150, "", true);
 		SlayerTaskContext context = parser.parse("You have completed your task!", previous).get();
 
 		assertFalse(context.isActive());

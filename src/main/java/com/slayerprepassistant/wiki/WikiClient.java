@@ -1,6 +1,7 @@
 package com.slayerprepassistant.wiki;
 
 import com.google.gson.Gson;
+import com.slayerprepassistant.PluginUrls;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -29,7 +30,6 @@ import okhttp3.ResponseBody;
 public class WikiClient
 {
 	public static final String USER_AGENT = "SlayerPrepAssistant-RuneLite/0.0.1";
-	private static final String API_URL = "https://oldschool.runescape.wiki/api.php";
 	private static final int MAX_TITLES_PER_QUERY = 50;
 	private static final int REVISION_CACHE_SIZE = 128;
 	private static final int RENDERED_CACHE_SIZE = 64;
@@ -402,18 +402,18 @@ public class WikiClient
 						return;
 					}
 
-					Map<String, String> imageUrls = responseParser.pageImageUrls(titles, body.string());
+					Map<String, String> imageSources = responseParser.pageImageSources(titles, body.string());
 					for (Map.Entry<String, String> request : requests)
 					{
 						String key = request.getKey() + "|" + size;
-						String imageUrl = imageUrls.getOrDefault(request.getKey(), "");
-						if (imageUrl.isEmpty())
+						String imageSource = imageSources.getOrDefault(request.getKey(), "");
+						if (imageSource.isEmpty())
 						{
 							completeImageResponse(key, null, true);
 						}
 						else
 						{
-							fetchImage(key, imageUrl);
+							fetchImage(key, imageSource);
 						}
 					}
 				}
@@ -481,14 +481,21 @@ public class WikiClient
 		});
 	}
 
-	private void fetchImage(String key, String imageUrl)
+	private void fetchImage(String key, String imageSource)
 	{
 		if (closed)
 		{
 			completeImageResponse(key, null, false);
 			return;
 		}
-		Call call = httpClient.newCall(new Request.Builder().url(imageUrl).header("User-Agent", USER_AGENT).build());
+		HttpUrl imageUrl = PluginUrls.osrsWikiImageUrlFromMediaWikiSource(imageSource);
+		if (imageUrl == null)
+		{
+			completeImageResponse(key, null, true);
+			return;
+		}
+
+		Call call = httpClient.newCall(request(imageUrl));
 		if (!track(call))
 		{
 			return;
@@ -580,12 +587,7 @@ public class WikiClient
 
 	private HttpUrl.Builder apiUrlBuilder()
 	{
-		HttpUrl apiUrl = HttpUrl.parse(API_URL);
-		if (apiUrl == null)
-		{
-			throw new IllegalStateException("Invalid Wiki API URL");
-		}
-		return apiUrl.newBuilder();
+		return PluginUrls.osrsWikiApiEndpointBuilder();
 	}
 
 	private boolean track(Call call)

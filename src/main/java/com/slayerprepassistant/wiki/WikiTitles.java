@@ -1,15 +1,11 @@
 package com.slayerprepassistant.wiki;
 
+import com.slayerprepassistant.PluginUrls;
 import com.slayerprepassistant.items.ItemResolver;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.util.Locale;
-import java.util.Objects;
 
 public final class WikiTitles
 {
-	private static final String HOST = "oldschool.runescape.wiki";
-
 	private WikiTitles()
 	{
 	}
@@ -20,14 +16,7 @@ public final class WikiTitles
 		{
 			return "";
 		}
-		try
-		{
-			return new URI("https", HOST, "/w/" + title.trim().replace(' ', '_'), null).toASCIIString();
-		}
-		catch (URISyntaxException ex)
-		{
-			return "";
-		}
+		return PluginUrls.osrsWikiPageUrl(title);
 	}
 
 	public static String singularTitle(String title)

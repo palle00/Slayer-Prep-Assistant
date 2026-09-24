@@ -177,13 +177,13 @@ Got an idea that would make the plugin better?
 
 <br>
 
-<a href="https://github.com/palle00/SlayerPrepAssistant/issues/new?labels=bug">
+<a href="https://github.com/palle00/Slayer-Prep-Assistant/issues/new?labels=bug">
   <img src="https://img.shields.io/badge/%20Report%20a%20Bug-d9534f?style=for-the-badge" alt="Report a Bug">
 </a>
 
 &nbsp;
 
-<a href="https://github.com/palle00/SlayerPrepAssistant/issues/new?labels=enhancement">
+<a href="https://github.com/palle00/Slayer-Prep-Assistant/issues/new?labels=enhancement">
   <img src="https://img.shields.io/badge/%20Suggest%20a%20Feature-c9a227?style=for-the-badge" alt="Suggest a Feature">
 </a>
 
